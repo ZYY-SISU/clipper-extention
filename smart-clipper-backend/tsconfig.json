@@ -1,0 +1,70 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    // // File Layout
+    // "rootDir": "./src",
+    // "outDir": "./dist",
+
+    // // Environment Settings
+    // // See also https://aka.ms/tsconfig/module
+    // "module": "nodenext",
+    // "target": "esnext",
+    // "types": [],
+    // // For nodejs:
+    // // "lib": ["esnext"],
+    // // "types": ["node"],
+    // // and npm install -D @types/node
+
+    // // Other Outputs
+    // "sourceMap": true,
+    // "declaration": true,
+    // "declarationMap": true,
+
+    // // Stricter Typechecking Options
+    // "noUncheckedIndexedAccess": true,
+    // "exactOptionalPropertyTypes": true,
+
+    // "esModuleInterop": true,
+
+    // // Style Options
+    // // "noImplicitReturns": true,
+    // // "noImplicitOverride": true,
+    // // "noUnusedLocals": true,
+    // // "noUnusedParameters": true,
+    // // "noFallthroughCasesInSwitch": true,
+    // // "noPropertyAccessFromIndexSignature": true,
+
+    // // Recommended Options
+    // "strict": true,
+    // "jsx": "react-jsx",
+    // "verbatimModuleSyntax": true,
+    // "isolatedModules": true,
+    // "noUncheckedSideEffectImports": true,
+    // "moduleDetection": "force",
+    // "skipLibCheck": true,
+
+
+    /* 基础配置 */
+    "target": "ES2020",             /* 编译成较新的 JS 版本 */
+    "module": "CommonJS",           /* 关键点 1: 输出为 Node.js 最喜欢的 CommonJS 格式 */
+    "moduleResolution": "node",     /* 关键点 2: 使用标准的 Node 模块解析策略 */
+    
+    /* 路径与目录 */
+    "outDir": "./dist",             /* 编译输出目录 */
+    "rootDir": "./src",             /* 源码目录 */
+    
+    /* 互操作性 (让 import 和 require 互相兼容) */
+    "esModuleInterop": true,        /* 关键点 3: 允许 import x from 'commonjs-module' 这种写法*/
+    "forceConsistentCasingInFileNames": true,
+    
+    /* 严格检查 */
+    "strict": true,
+    "skipLibCheck": true,
+
+    /* 🔴 核心修复: 关闭这个严格的语法检查 */
+    "verbatimModuleSyntax": false   
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+  
+}

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "AI智能剪藏助手",
+  "version": "1.0",
+  "permissions": ["sidePanel"],
+  "action": {},
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "host_permissions": [
+    "http://localhost/*", 
+    "http://127.0.0.1/*",
+    "https://api.siliconflow.cn/*" 
+  ],
+ 
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["assets/content.js"] 
+    }
+  ]
+}

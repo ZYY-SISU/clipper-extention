@@ -1,0 +1,27 @@
+// src/defaultTemplates.ts
+
+import { TemplateConfig } from './types';
+
+export const DEFAULT_TEMPLATES: TemplateConfig[] = [
+  { 
+    id: 'summary', 
+    name: '智能摘要', 
+    iconType: 'text', 
+    description: '生成简短的摘要和标签',
+    systemPrompt: '你是一个专业的摘要助手。请把用户的内容总结为 JSON 格式，包含 title(标题), summary(摘要), tags(标签数组)。不要输出 markdown 标记。'
+  },
+  { 
+    id: 'table', 
+    name: '数据表格', 
+    iconType: 'table',
+    description: '提取关键数据整理为表格',
+    systemPrompt: '你是一个数据分析师。请提取内容中的关键数据，整理为 columns(列名数组) 和 data(行数据数组) 的 JSON 格式。'
+  },
+  { 
+    id: 'list', 
+    name: '待办清单', 
+    iconType: 'check', 
+    description: '提取行动项',
+    systemPrompt: '你是一个待办事项整理员。请提取内容为 checkItems 数组，每项包含 text(内容) 和 checked(false)。返回 JSON。'
+  }
+];
