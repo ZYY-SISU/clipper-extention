@@ -64,12 +64,22 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
 
     // 调用服务层逻辑,我的测试模块
     // const result = await analyzeText(text,model);
-
-   const result = await processContent(content, targetTemplate.systemPrompt, model);//胡同学的模块
+// 1. 获取 AI 原始结果
+    const rawResult = await processContent(content, targetTemplate.systemPrompt, model);
     
-    // 返回结果给前端
-    console.log("处理成功，返回结果");
-    res.json(result);
+    // 🟢 2. 核心修改：清洗数据，只保留我们需要的四个金刚
+    // 这里的 || 是为了防止 AI 没返回某个字段导致 undefined
+    const cleanResult = {
+      title: rawResult.title || "无标题",
+      summary: rawResult.summary || "无摘要",
+      sentiment: rawResult.sentiment || "中性",
+      tags: Array.isArray(rawResult.tags) ? rawResult.tags : [] 
+    };
+
+    console.log("处理成功，返回清洗后的结果:", cleanResult);
+    
+    // 3. 返回清洗后的数据
+    res.json(cleanResult);
 
   } catch (error: any) {
     console.error(error);
