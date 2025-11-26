@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { analyzeText } from './services/aiService';
-import { processContent } from './services/ai_handler';//胡同学的ai模块
+/* import { processContent } from './services/ai_handler';//胡同学的ai模块 */                 //原先的
+import { processContent , processChat } from './services/ai_handler';//胡同学的ai模块        //导入ai对话需要的processChat （胡）
 import { addRecord } from './services/feishuService'; // <--- 导入新写的服务
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
@@ -65,8 +66,10 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
     // 调用服务层逻辑,我的测试模块
     // const result = await analyzeText(text,model);
 
-   const result = await processContent(content, targetTemplate.systemPrompt, model);//胡同学的模块
-    
+/*    const result = await processContent(content, targetTemplate.systemPrompt, model);//胡同学的模块 */
+     const result = await processContent(content, targetTemplate.systemPrompt, template,model,)     //对齐了与ai-handler的传参数量和顺序差异（胡）
+
+
     // 返回结果给前端
     console.log("处理成功，返回结果");
     res.json(result);
@@ -74,6 +77,28 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || '服务器内部错误' });
+  }
+});
+
+//  新增：对话专用接口（胡）
+app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { message, model } = req.body;
+
+    if (!message) {
+      res.status(400).json({ error: '消息内容不能为空' });
+      return;
+    }
+
+    // 调用刚才写的纯对话函数
+    const reply = await processChat(message, model);
+    
+    // 直接返回字符串结果
+    res.json({ reply });
+
+  } catch (error: any) {
+    console.error("Chat API Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
