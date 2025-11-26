@@ -2,7 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Table, CheckSquare, Sparkles, Bot, Settings, 
   Star, Send, ArrowLeft, MessageSquare, ChevronDown, Check, Zap,
-  Brain ,Globe// DeepSeek 图标
+  Brain ,Globe,
+
+ CloudUpload, // 🟢 新增：用于导出按钮的图标
+  CheckCircle, // 🟢 新增：用于成功状态
+  Loader2      // 🟢 新增：用于加载状态
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType, chatHistoryType } from '../types/index';
 import './SidePanel.css';
@@ -19,7 +23,10 @@ function SidePanel() {
   // --- 状态管理 ---
   const [view, setView] = useState('clipper'); // 'clipper' | 'chat'
   const [content, setContent] = useState('');
-  
+  const [structuredData, setStructuredData] = useState<any>(null);// 🟢 1. 新增状态:用于存储 AI 分析出来的原始结构化数据，以便发给飞书
+  const [isSaving, setIsSaving] = useState(false);// 🟢 2. 新增状态：控制导出按钮的 Loading 状态
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+
   // 模板数据
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true); // 修改加载状态
@@ -103,15 +110,15 @@ function SidePanel() {
     }
   }, [chatHistory, view]);
 
-
+// =================================================================================
+  //  接口区域 3：提交任务 (已修改：只展示 标题、摘要、情感、标签)
   // =================================================================================
-  //  接口区域 3：提交任务 
-  // =================================================================================
- const handleStructure = async () => {
+  const handleStructure = async () => {
     if (!content) return alert('请先剪藏内容');
     if (!selectedTemplateId) return alert('请选择模板');
     
     setStatus('processing');
+    setSaveStatus('idle'); 
     
     try {
       console.log('🚀 发起 AI 请求...');
@@ -121,8 +128,8 @@ function SidePanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: content,
-          template: selectedTemplateId, // 对应后端 req.body.template
-          model: selectedModel.id       // 对应后端 req.body.model
+          template: selectedTemplateId, 
+          model: selectedModel.id       
         })
       });
 
@@ -134,15 +141,39 @@ function SidePanel() {
 
       console.log('✅ AI 响应成功:', data);
 
+      // 1. 存下数据 (给飞书用)
+      setStructuredData(data); 
+
       setStatus('ready');
       setView('chat'); 
       
-      // 格式化展示
-      const displayText = 
-        `📌 **标题**: ${data.title || '未命名'}\n\n` +
-        `📝 **摘要**: ${data.summary || '无内容'}\n\n` +
-        `🏷️ **标签**: ${data.tags ? data.tags.join(', ') : '无'}`;
+      // 🟢 2. 核心修改：只展示这四个字段，不做任何多余的遍历
+      let displayText = '';
 
+      // (1) 标题
+      displayText += `📌 **标题**: ${data.title || '未提取到标题'}\n\n`;
+      
+      // (2) 摘要
+      displayText += `📝 **摘要**: ${data.summary || '未提取到摘要'}\n\n`;
+
+      // (3) 情感 (新增展示)
+      // 可能会返回 "positive"/"negative" 或中文，做个简单的容错
+      const sentimentMap: Record<string, string> = {
+        'positive': '正面 👍',
+        'negative': '负面 👎',
+        'neutral': '中性 😐'
+      };
+      const sentimentShow = sentimentMap[data.sentiment] || data.sentiment || '未知';
+      displayText += `mood **情感**: ${sentimentShow}\n\n`;
+
+      // (4) 标签
+      if (Array.isArray(data.tags) && data.tags.length > 0) {
+        displayText += `🏷️ **标签**: ${data.tags.join(', ')}`;
+      } else {
+        displayText += `🏷️ **标签**: 无`;
+      }
+
+      // 3. 更新聊天记录
       setChatHistory(prev => [...prev, { 
         role: 'ai', 
         text: displayText 
@@ -151,9 +182,10 @@ function SidePanel() {
     } catch (error) {
       console.error("❌ 请求失败:", error);
       setStatus('ready');
-      alert(`请求失败: ${error}\n请检查后端是否开启 (npm run dev)`);
+      alert(`请求失败: ${error}\n请检查后端是否开启`);
     }
   };
+  
   // =================================================================================
   //  接口区域 4：对话交互
   // =================================================================================
@@ -170,6 +202,49 @@ function SidePanel() {
         text: `(来自 ${selectedModel.name}): 收到反馈！` 
       }]);
     }, 800);
+  };
+
+// =================================================================================
+  //  🟢 5. 处理导出到飞书
+  // =================================================================================
+  const handleExportToFeishu = async () => {
+    if (!structuredData) return;
+    setIsSaving(true);
+
+    try {
+      // 1. 获取当前浏览器 Tab 的 URL (需要加上 url 字段)
+      // 注意：这需要在 manifest.json 中开启 "tabs" 或 "activeTab" 权限
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentUrl = tab.url || '';
+
+      // 2. 组装数据
+      const payload = {
+        ...structuredData, // title, summary, tags, sentiment
+        url: currentUrl    // 补全后端 feishuService 需要的 url 字段
+      };
+
+      // 3. 发送给后端
+      const res = await fetch('http://localhost:3000/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '保存失败');
+
+      // 4. 成功反馈
+      setSaveStatus('success');
+      
+      // 3秒后重置状态，允许再次保存
+      setTimeout(() => setSaveStatus('idle'), 3000);
+
+    } catch (error) {
+      console.error('导出失败:', error);
+      alert('导出飞书失败，请检查后端日志');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // --- 视图 1: 剪藏界面 (Gemini 悬浮胶囊版) ---
@@ -329,8 +404,33 @@ function SidePanel() {
           {view === 'chat' ? <MessageSquare size={20} color="#2563eb"/> : <Bot size={20} color="#2563eb" />}
           <span>{view === 'chat' ? 'AI 助手' : 'AI Clipper'}</span>
         </div>
-        <Settings size={18} color="#94a3b8" />
+
+        {/* 🟢 右上角按钮区域 
+            如果是 'chat' 视图且有数据，显示炫酷的“导出飞书”按钮,否则显示默认的设置图标 
+        */}
+        {view === 'chat' && structuredData ? (
+          <button 
+            className={`feishu-export-btn ${saveStatus === 'success' ? 'success' : ''}`}
+            onClick={handleExportToFeishu}
+            disabled={isSaving || saveStatus === 'success'}
+          >
+            {isSaving ? (
+              <Loader2 size={14} className="spin" />
+            ) : saveStatus === 'success' ? (
+              <>
+                <CheckCircle size={14} /> <span>已保存</span>
+              </>
+            ) : (
+              <>
+                <CloudUpload size={14} /> <span>存飞书</span>
+              </>
+            )}
+          </button>
+        ) : (
+          <Settings size={18} color="#94a3b8" />
+        )}
       </div>
+
       {view === 'clipper' ? renderClipperView() : renderChatView()}
     </>
   );

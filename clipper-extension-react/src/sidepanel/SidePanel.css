@@ -406,4 +406,56 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+
+
+/* 🟢 右上角飞书导出按钮 */
+.feishu-export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* 默认状态：飞书风格渐变 */
+  background: linear-gradient(135deg, #00d6b9 0%, #3370ff 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(51, 112, 255, 0.25);
 }
+
+.feishu-export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(51, 112, 255, 0.4);
+  filter: brightness(1.05);
+}
+
+.feishu-export-btn:active {
+  transform: translateY(0);
+}
+
+/* 成功状态：绿色 */
+.feishu-export-btn.success {
+  background: #10b981; /* Emerald 500 */
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  cursor: default;
+}
+
+/* Loading 旋转动画 */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 禁用状态 */
+.feishu-export-btn:disabled {
+  opacity: 0.9;
+  cursor: not-allowed;
+}}
