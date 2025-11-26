@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Table, CheckSquare, Sparkles, Bot, Settings, 
   Star, Send, ArrowLeft, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe// DeepSeek 图标
 } from 'lucide-react'; 
+import type{ requestType, senderType, sendResponseType, templateType, chatHistoryType } from '../types/index';
 import './SidePanel.css';
 
 // --- 1. 定义模型列表 ---
@@ -20,10 +21,10 @@ function SidePanel() {
   const [content, setContent] = useState('');
   
   // 模板数据
-  const [templates, setTemplates] = useState([]); 
+  const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true); // 修改加载状态
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState('ready');
 
   // 模型选择
@@ -33,17 +34,17 @@ function SidePanel() {
   // 聊天与打分
   const [rating, setRating] = useState(0); 
   const [userNote, setUserNote] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState<chatHistoryType[]>([]);
   
-  const chatEndRef = useRef(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // =================================================================================
   //  接口区域 1：接收数据 [对接成员 A]
   // =================================================================================
   useEffect(() => {
-    const handleMessage = (request, sender, sendResponse) => {
+    const handleMessage = (request:requestType, _:senderType, sendResponse:sendResponseType) => {
       if (request.type === 'CLIP_CONTENT') {
-        setContent(request.payload.text || request.payload.html);
+        setContent(request.payload.text || request.payload.html || '');
         sendResponse({ status: 'success' });
       }
     };
@@ -78,7 +79,7 @@ function SidePanel() {
   }, []); // 空数组代表只在组件挂载时执行一次
 
   // 🌟【修改点 3】图标映射增强
-  const getIconComponent = (type) => {
+  const getIconComponent = (type:templateType['iconType']) => {
     switch(type) {
       case 'text': return FileText;
       case 'table': return Table;
@@ -150,7 +151,7 @@ function SidePanel() {
     } catch (error) {
       console.error("❌ 请求失败:", error);
       setStatus('ready');
-      alert(`请求失败: ${error.message}\n请检查后端是否开启 (npm run dev)`);
+      alert(`请求失败: ${error}\n请检查后端是否开启 (npm run dev)`);
     }
   };
   // =================================================================================

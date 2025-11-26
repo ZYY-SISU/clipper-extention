@@ -1,0 +1,55 @@
+export type MessageType =
+ | 'CLIP_CONTENT'        // 侧边栏接收内容
+ | 'GET_SELECTION'       // 获取选中内容
+ | 'ANALYZE'             // 分析
+ | 'SAVE_TO_FEISHU'      // 保存到飞书
+ | string;
+
+// CLIP_CONTENT 的负载结构（允许 text/html 可选，同时扩展来源 URL 等）
+export interface ClipContentPayload {
+  text?: string;
+  html?: string;
+  sourceUrl?: string;
+}
+
+
+export type requestType =
+ | {type: 'CLIP_CONTENT', payload: ClipContentPayload}
+ | {type: 'GET_SELECTION', payload?: string}
+ | {type: 'ANALYZE', payload: {text: string, model: string}}
+
+
+// Chrome 发送方信息（对齐 chrome.runtime.MessageSender 的常用字段，全部可选，避免类型报错）
+export interface senderType {
+  tab?: {
+    id?: number;
+    url?: string;
+    title?: string;
+  };
+  frameId?: number;
+  id?: string; // extension id or content script id
+}
+
+// 响应负载结构（状态 + 可选数据/消息）
+export interface ResponsePayload {
+  status: 'success' | 'error';
+  data?: unknown;
+  message?: string;
+}
+
+// sendResponse 回调类型（便于需要时进行显式标注）
+export type sendResponseType = (response: ResponsePayload) => void;
+
+
+// -----------------------------------------------------------
+export interface templateType {
+  id: string; 
+  name: string; 
+  iconType: string;
+  isCustom?: boolean;
+}
+
+export interface chatHistoryType {
+  role: string
+  text: string
+}
