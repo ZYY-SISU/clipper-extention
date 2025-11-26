@@ -5,13 +5,13 @@ console.log('AI剪藏助手：通用智能抓取脚本已就绪');
  * 通用元数据获取工具
  * 依次尝试传入的选择器，返回第一个获取到的非空值
  */
-function getMetaContent(selectors) {
+function getMetaContent(selectors: string[]): string {
   for (const selector of selectors) {
     // 尝试获取 meta 标签的 content 属性
     const element = document.querySelector(selector);
     if (element) {
       // 兼容 innerText (如 title 标签) 和 content (如 meta 标签)
-      const content = element.getAttribute('content') || element.innerText;
+      const content = element.getAttribute('content') || (element as HTMLElement).innerText;
       if (content && content.trim()) return content.trim();
     }
   }
@@ -77,7 +77,7 @@ ${image ? `\n![封面图](${image})` : ''}`,
 window.addEventListener('load', () => {
   setTimeout(() => {
     // 只有当用户没有进行划词操作时，才发送整页数据，避免打扰
-    const selection = window.getSelection().toString().trim();
+    const selection = window.getSelection()?.toString().trim() || '';
     if (!selection) {
       const pageData = extractUniversalContent();
       chrome.runtime.sendMessage({
@@ -108,7 +108,7 @@ new MutationObserver(() => {
 // 3. 划词剪藏 (优先级最高)
 document.addEventListener('mouseup', () => {
   const selection = window.getSelection();
-  const selectedText = selection.toString().trim();
+  const selectedText = selection ? selection.toString().trim() : '';
 
   if (selectedText.length > 0) {
     chrome.runtime.sendMessage({
