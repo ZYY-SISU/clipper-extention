@@ -1,5 +1,6 @@
 export type MessageType =
  | 'CLIP_CONTENT'        // 侧边栏接收内容
+ | 'FETCH_TEMPLATES'     // 获取模板列表
  | 'GET_SELECTION'       // 获取选中内容
  | 'ANALYZE'             // 分析
  | 'SAVE_TO_FEISHU'      // 保存到飞书
@@ -15,8 +16,10 @@ export interface ClipContentPayload {
 
 export type requestType =
  | {type: 'CLIP_CONTENT', payload: ClipContentPayload}
+ | {type: 'FETCH_TEMPLATES'}
  | {type: 'GET_SELECTION', payload?: string}
- | {type: 'ANALYZE', payload: {text: string, model: string}}
+ | {type: 'ANALYZE', payload: {content: string, template: string, model: string}}
+ | {type: 'SAVE_TO_FEISHU', payload: {content: string, template: string, model: string, url: string}}
 
 
 // Chrome 发送方信息（对齐 chrome.runtime.MessageSender 的常用字段，全部可选，避免类型报错）
@@ -35,6 +38,7 @@ export interface ResponsePayload {
   status: 'success' | 'error';
   data?: unknown;
   message?: string;
+  isLoading?: boolean;
 }
 
 // sendResponse 回调类型（便于需要时进行显式标注）

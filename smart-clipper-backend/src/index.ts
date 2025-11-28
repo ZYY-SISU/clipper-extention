@@ -65,7 +65,7 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
     // 调用服务层逻辑,我的测试模块
     // const result = await analyzeText(text,model);
 // 1. 获取 AI 原始结果
-    const rawResult = await processContent(content, targetTemplate.systemPrompt, model);
+    const rawResult = await processContent(content, template, targetTemplate.systemPrompt, model);
     
     // 🟢 2. 核心修改：清洗数据，只保留我们需要的四个金刚
     // 这里的 || 是为了防止 AI 没返回某个字段导致 undefined

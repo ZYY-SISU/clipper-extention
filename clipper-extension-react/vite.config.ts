@@ -15,7 +15,7 @@ const manifest = defineManifest({
     "128": "icons/icon-128.png"
   },
   // 权限申请
-  permissions: ["sidePanel", "activeTab", "scripting"], 
+  permissions: ["sidePanel", "activeTab", "scripting", "tabs", "storage"], 
   // 侧边栏配置
   side_panel: {
     default_path: "src/sidepanel/index.html"

@@ -8,7 +8,7 @@ import {
   CheckCircle, // 🟢 新增：用于成功状态
   Loader2      // 🟢 新增：用于加载状态
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, chatHistoryType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, chatHistoryType, ResponsePayload } from '../types/index';
 import './SidePanel.css';
 
 // --- 1. 定义模型列表 ---
@@ -60,29 +60,20 @@ function SidePanel() {
   }, []);
 
   // =================================================================================
-  //  🌟【修改点 2】新增：组件加载时，向后端请求模版列表
+  //  组件加载时，从background 获取数据
   // =================================================================================
   useEffect(() => {
-    const fetchTemplates = async () => {
-      console.log("🚀 前端正在尝试连接后端..."); // <--- 加上这一句
-      try {
-        // 请求后端接口
-        const res = await fetch('http://localhost:3000/api/templates');
-        const json = await res.json();
-        
-        if (json.code === 200) {
-          setTemplates(json.data); // 将后端返回的数组存入状态
-        }
-      } catch (error) {
-        console.error("获取模版失败:", error);
-        // 兜底策略：如果后端没开，显示一个默认的
-        setTemplates([{ id: 'summary', name: '智能摘要(离线)', iconType: 'text' }]);
-      } finally {
-        setIsLoadingTemplates(false); // 无论成功失败，都结束加载状态
+    // 获取模板列表
+    chrome.runtime.sendMessage({ type: 'FETCH_TEMPLATES' }, (response:ResponsePayload) => {
+      if (response.status === 'success') {
+        setTemplates(response.data as templateType[]);
+        setIsLoadingTemplates(response.isLoading ||false);
+      } else {
+        // 兜底策略
+        setTemplates([{id: 'summary', name: '智能摘要(离线)', iconType: 'text'}])
+        console.error('获取模板列表失败:', response.message);
       }
-    };
-
-    fetchTemplates();
+    });
   }, []); // 空数组代表只在组件挂载时执行一次
 
   // 🌟【修改点 3】图标映射增强
@@ -104,12 +95,6 @@ function SidePanel() {
   }, [chatHistory, view]);
 
 
-  useEffect(() => {
-    if (view === 'chat') {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatHistory, view]);
-
 // =================================================================================
   //  接口区域 3：提交任务 (已修改：只展示 标题、摘要、情感、标签)
   // =================================================================================
@@ -122,63 +107,60 @@ function SidePanel() {
     
     try {
       console.log('🚀 发起 AI 请求...');
-      
-      const response = await fetch('http://localhost:3000/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+
+      chrome.runtime.sendMessage({
+        type: 'ANALYZE',
+        payload: {
           content: content,
           template: selectedTemplateId, 
           model: selectedModel.id       
-        })
-      });
+        }
+      },(response:ResponsePayload) => {
+        if (response.status === 'success') {
+          console.log('✅ AI 响应成功:', response.data);
+          const data = response.data as any;
+          // 1. 存下数据 (给飞书用)
+          setStructuredData(data); 
+          
+          setStatus('ready');
+          setView('chat'); 
+          
+          // 显示格式化内容
+          let displayText = '';
 
-      const data = await response.json();
+          // (1) 标题
+          displayText += `📌 **标题**: ${data.title || '未提取到标题'}\n\n`;
+          
+          // (2) 摘要
+          displayText += `📝 **摘要**: ${data.summary || '未提取到摘要'}\n\n`;
 
-      if (!response.ok) {
-        throw new Error(data.error || '服务器返回错误');
-      }
+          // (3) 情感 (新增展示)
+          // 可能会返回 "positive"/"negative" 或中文，做个简单的容错
+          const sentimentMap: Record<string, string> = {
+            'positive': '正面 👍',
+            'negative': '负面 👎',
+            'neutral': '中性 😐'
+          };
+          const sentimentShow = sentimentMap[data.sentiment] || data.sentiment || '未知';
+          displayText += `mood **情感**: ${sentimentShow}\n\n`;
 
-      console.log('✅ AI 响应成功:', data);
+          // (4) 标签
+          if (Array.isArray(data.tags) && data.tags.length > 0) {
+            displayText += `🏷️ **标签**: ${data.tags.join(', ')}`;
+          } else {
+            displayText += `🏷️ **标签**: 无`;
+          }
 
-      // 1. 存下数据 (给飞书用)
-      setStructuredData(data); 
-
-      setStatus('ready');
-      setView('chat'); 
-      
-      // 🟢 2. 核心修改：只展示这四个字段，不做任何多余的遍历
-      let displayText = '';
-
-      // (1) 标题
-      displayText += `📌 **标题**: ${data.title || '未提取到标题'}\n\n`;
-      
-      // (2) 摘要
-      displayText += `📝 **摘要**: ${data.summary || '未提取到摘要'}\n\n`;
-
-      // (3) 情感 (新增展示)
-      // 可能会返回 "positive"/"negative" 或中文，做个简单的容错
-      const sentimentMap: Record<string, string> = {
-        'positive': '正面 👍',
-        'negative': '负面 👎',
-        'neutral': '中性 😐'
-      };
-      const sentimentShow = sentimentMap[data.sentiment] || data.sentiment || '未知';
-      displayText += `mood **情感**: ${sentimentShow}\n\n`;
-
-      // (4) 标签
-      if (Array.isArray(data.tags) && data.tags.length > 0) {
-        displayText += `🏷️ **标签**: ${data.tags.join(', ')}`;
-      } else {
-        displayText += `🏷️ **标签**: 无`;
-      }
-
-      // 3. 更新聊天记录
-      setChatHistory(prev => [...prev, { 
-        role: 'ai', 
-        text: displayText 
-      }]);
-
+          // 3. 更新聊天记录
+          setChatHistory(prev => [...prev, { 
+            role: 'ai', 
+            text: displayText 
+          }]);
+        }else {
+          setStatus('ready');
+          alert(`请求失败: ${response?.message}\n请检查后端是否开启`);
+        }
+      })
     } catch (error) {
       console.error("❌ 请求失败:", error);
       setStatus('ready');
@@ -212,32 +194,15 @@ function SidePanel() {
     setIsSaving(true);
 
     try {
-      // 1. 获取当前浏览器 Tab 的 URL (需要加上 url 字段)
-      // 注意：这需要在 manifest.json 中开启 "tabs" 或 "activeTab" 权限
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const currentUrl = tab.url || '';
-
-      // 2. 组装数据
-      const payload = {
-        ...structuredData, // title, summary, tags, sentiment
-        url: currentUrl    // 补全后端 feishuService 需要的 url 字段
-      };
-
-      // 3. 发送给后端
-      const res = await fetch('http://localhost:3000/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || '保存失败');
-
-      // 4. 成功反馈
-      setSaveStatus('success');
-      
-      // 3秒后重置状态，允许再次保存
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      chrome.runtime.sendMessage({ type: 'SAVE_TO_FEISHU',payload:structuredData},(response:ResponsePayload) => {
+        if (response.status === 'success') {
+          setSaveStatus('success');
+          // 3秒后重置状态，允许再次保存
+          setTimeout(() => setSaveStatus('idle'), 3000);
+        } else {
+          throw new Error(response?.message || '导出失败');
+        }
+      })
 
     } catch (error) {
       console.error('导出失败:', error);
