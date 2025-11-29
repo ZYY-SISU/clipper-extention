@@ -10,6 +10,9 @@ export type MessageType =
 export interface ClipContentPayload {
   text?: string;
   html?: string;
+  images?: Array<ImageData>;
+  links?: Array<LinkData>;
+  meta?: PageMeta;
   sourceUrl?: string;
 }
 
@@ -56,4 +59,46 @@ export interface templateType {
 export interface chatHistoryType {
   role: string
   text: string
+}
+
+// -----------------------------------------------------------
+export interface SelectionData {
+  type: string;
+  text: string;
+  html: string;
+  images: Array<ImageData>;
+  links: Array<LinkData>;
+  meta: PageMeta;
+}
+
+export interface PageMeta {
+  url: string;
+  title: string;
+  description: string;
+  author: string;
+  siteName: string;
+  publishedTime: string;
+  image: string;
+  clipTime: string;
+}
+
+export interface PageData {
+  type: string;
+  text: string;
+  html: string;
+  images: Array<ImageData>;
+  links: Array<LinkData>;
+  meta: PageMeta;
+}
+
+export interface ImageData {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+}
+
+export interface LinkData {
+  href: string;
+  text: string;
 }
