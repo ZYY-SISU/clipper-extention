@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { analyzeText } from './services/aiService';
-import { processContent } from './services/ai_handler';//胡同学的ai模块
+import { processContent, processChat } from './services/ai_handler';//胡同学的ai模块
 import { addRecord } from './services/feishuService'; // <--- 导入新写的服务
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
@@ -38,6 +38,8 @@ app.get('/api/templates', (req: Request, res: Response) => {
     data: allTemplates
   });
 });
+
+
 // 👇AI 分析接口
 //  POST 接口，前端会把 { text: "..." } 发过来
 app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
@@ -65,7 +67,7 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
     // 调用服务层逻辑,我的测试模块
     // const result = await analyzeText(text,model);
 // 1. 获取 AI 原始结果
-    const rawResult = await processContent(content, targetTemplate.systemPrompt, model);
+    const rawResult = await processContent(content, template, targetTemplate.systemPrompt, model);
     
     // 🟢 2. 核心修改：清洗数据，只保留我们需要的四个金刚
     // 这里的 || 是为了防止 AI 没返回某个字段导致 undefined
@@ -86,6 +88,30 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: error.message || '服务器内部错误' });
   }
 });
+
+
+//  新增：对话专用接口
+app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { message, model } = req.body;
+
+    if (!message) {
+      res.status(400).json({ error: '消息内容不能为空' });
+      return;
+    }
+
+    // 调用刚才写的纯对话函数
+    const reply = await processChat(message, model);
+    
+    // 直接返回字符串结果
+    res.json({ reply });
+
+  } catch (error: any) {
+    console.error("Chat API Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // 👇 保存到飞书接口 
 app.post('/api/save', async (req: Request, res: Response): Promise<void> => {

@@ -4,32 +4,32 @@ import OpenAI from 'openai';
 
 // 1. 定义模型配置
 const CONFIGS: Record<string, any> = {
-  // --- DeepSeek R1 (使用硅基流动) ---
+  // --- DeepSeek R1 (使用OpenRouter) ---
   'deepseek-r1': {
-    baseURL: 'https://api.siliconflow.cn/v1',  // 硅基流动地址
-    model: 'deepseek-ai/DeepSeek-R1',         // 硅基流动模型名
-    envKey: 'SILICON_KEY'                     
+    baseURL: 'https://openrouter.ai/api/v1',  // OpenRouter流动地址
+    model: 'deepseek/deepseek-r1',         // OpenRouter流动模型名
+    envKey: 'Openrouter_KEY'       
   },
   
   // --- GPT-4o  ---
   'gpt-4o': {
-    baseURL: 'https://api.siliconflow.cn/v1',
-    model: 'gpt-4o',
-    envKey: 'SILICON_KEY'
+    baseURL: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o',
+    envKey: 'Openrouter_KEY'
   },
 
   // --- GPT-4o mini  ---
   'gpt-4o-mini': {
-    baseURL: 'https://api.siliconflow.cn/v1',
-    model: 'gpt-4o-mini',
-    envKey: 'SILICON_KEY'
+    baseURL: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o-mini',
+    envKey: 'Openrouter_KEY'
   },
 
   // --- Claude 3.5  ---
   'claude-3-5': {
-    baseURL: 'https://api.siliconflow.cn/v1',
-    model: 'claude-3-5-sonnet-20240620',
-    envKey: 'SILICON_KEY'
+    baseURL: 'https://openrouter.ai/api/v1',
+    model: 'anthropic/claude-3.5-sonnet',
+    envKey: 'Openrouter_KEY'
   }
 };
 
@@ -95,3 +95,50 @@ export async function processContent(htmlContent: string, templateId: string, sy
     };
   }
 }
+
+/**
+ * 纯对话模式   
+ * 不强制 JSON，支持自由文本回复
+ */
+
+export async function processChat(userMessage: string, modelId: string = 'deepseek-r1') {
+  const config = CONFIGS[modelId] || CONFIGS['deepseek-r1'];
+  const currentKey = process.env[config.envKey];
+
+  if (!currentKey) {
+    return "❌ 配置错误: 未找到 API Key，请检查服务器 .env 文件。";
+  }
+
+  const client = new OpenAI({
+    baseURL: config.baseURL,
+    apiKey: currentKey,
+    dangerouslyAllowBrowser: true
+  });
+
+  console.log(`💬 [Chat] 收到消息: ${userMessage.substring(0, 20)}... 使用模型: ${config.model}`);
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: config.model,
+      messages: [
+        // 这里的 Prompt 设定为通用助手，而不是 JSON 提取机器
+        { role: "system", content: "你是一个乐于助人的 AI 助手。请根据用户需求回答用户的问题。" },
+        { role: "user", content: userMessage }
+      ],
+      // ❌ 注意：这里千万不能加 response_format: { type: "json_object" }
+      temperature: 0.7, // 稍微高一点，让对话更自然
+    });
+
+    const rawContent = completion.choices[0].message.content || "（无回复）";
+    
+    // 依然清洗掉 R1 的思考过程，只保留结论
+    const cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    
+    return cleanContent;
+
+  } catch (error: any) {
+    console.error("Chat Error:", error);
+    return `❌ 对话请求失败: ${error.message}`;
+  }
+}
+ 

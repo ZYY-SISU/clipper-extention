@@ -8,7 +8,7 @@ import {
   CheckCircle, // 🟢 新增：用于成功状态
   Loader2      // 🟢 新增：用于加载状态
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, chatHistoryType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType } from '../types/index';
 import './SidePanel.css';
 
 // --- 1. 定义模型列表 ---
@@ -41,7 +41,7 @@ function SidePanel() {
   // 聊天与打分
   const [rating, setRating] = useState(0); 
   const [userNote, setUserNote] = useState('');
-  const [chatHistory, setChatHistory] = useState<chatHistoryType[]>([]);
+  const [chatHistory, setChatHistory] = useState<any[]>([]);;
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -186,7 +186,7 @@ function SidePanel() {
     }
   };
   
-  // =================================================================================
+/*   // =================================================================================
   //  接口区域 4：对话交互
   // =================================================================================
   const handleSend = () => {
@@ -202,6 +202,61 @@ function SidePanel() {
         text: `(来自 ${selectedModel.name}): 收到反馈！` 
       }]);
     }, 800);
+  }; */
+
+// =================================================================================
+  //  接口区域 4：完整的对话交互模块（胡）
+  // =================================================================================
+  const handleSend = async () => {
+    // 1. 校验输入
+    if (!userNote.trim()) return;
+    
+    // 2. 立即更新 UI：把用户的消息先显示出来
+    const currentMsg = userNote;
+    const newHistory = [...chatHistory, { role: 'user', text: currentMsg }];
+    setChatHistory(newHistory);
+    setUserNote(''); // 清空输入框
+    
+    // 3. 显示一个 "AI 正在输入..." 的临时占位符
+    const loadingMsg = { role: 'ai', text: 'Thinking...', isLoading: true };
+    setChatHistory([...newHistory, loadingMsg]);
+
+    try {
+      console.log('💬 发送对话请求:', { message: currentMsg, model: selectedModel.id });
+
+      // 4. 发起真实请求
+      const response = await fetch('http://localhost:3000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: currentMsg,
+          model: selectedModel.id
+        })
+      });
+
+      const data = await response.json();
+
+      // 5. 请求成功，用真实回复替换掉 "Thinking..."
+      setChatHistory(prev => {
+        // 移除最后一个 (Loading) 消息
+        const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
+        return [...historyWithoutLoading, { 
+          role: 'ai', 
+          text: data.reply || "AI 没有返回内容" 
+        }];
+      });
+
+    } catch (error:any) {
+      console.error("对话失败:", error);
+      // 6. 失败处理
+      setChatHistory(prev => {
+        const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
+        return [...historyWithoutLoading, { 
+          role: 'ai', 
+          text: `❌ 发送失败: ${error.message} (请检查后端是否开启)` 
+        }];
+      });
+    }
   };
 
 // =================================================================================
