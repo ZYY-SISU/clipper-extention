@@ -8,7 +8,9 @@ import {
 
  CloudUpload, // 🟢 新增：用于导出按钮的图标
   CheckCircle, // 🟢 新增：用于成功状态
-  Loader2      // 🟢 新增：用于加载状态
+  Loader2,      // 🟢 新增：用于加载状态
+  User,         // 🟢 新增：用于个人用户图标
+  Settings      // 🟢 新增：用于设置图标
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType } from '../types/index';
 import './SidePanel.css';
@@ -509,6 +511,22 @@ ${sentimentShow}\n\n`;
         ) : (
           <CloudUpload size={16} />
         )}
+      </button>
+
+      {/* 设置按钮 */}
+      <button 
+        className={`nav-button`}
+        title="设置"
+      >
+        <Settings size={20} />
+      </button>
+
+       {/* 个人用户按钮 */}
+      <button 
+        className={`nav-button`}
+        title="个人用户"
+      >
+        <User size={20} />
       </button>
     </div>
   );
