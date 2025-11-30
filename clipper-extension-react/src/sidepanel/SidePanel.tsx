@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { 
-  FileText, Table, CheckSquare, Sparkles, Bot, Settings, 
-  Star, Send, ArrowLeft, MessageSquare, ChevronDown, Check, Zap,
+  FileText, Table, CheckSquare, Sparkles, Bot, 
+  Star, Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe,
 
  CloudUpload, // 🟢 新增：用于导出按钮的图标
@@ -46,7 +48,7 @@ function SidePanel() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // =================================================================================
-  //  接口区域 1：接收数据 [对接成员 A]
+  //  接收剪藏数据
   // =================================================================================
   useEffect(() => {
     const handleMessage = (request:requestType, _:senderType, sendResponse:sendResponseType) => {
@@ -60,7 +62,7 @@ function SidePanel() {
   }, []);
 
   // =================================================================================
-  //  🌟【修改点 2】新增：组件加载时，向后端请求模版列表
+  //  组件加载时，向后端请求模版列表
   // =================================================================================
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -147,31 +149,43 @@ function SidePanel() {
       setStatus('ready');
       setView('chat'); 
       
-      // 🟢 2. 核心修改：只展示这四个字段，不做任何多余的遍历
+      // 使用Markdown格式优化AI响应消息
       let displayText = '';
 
-      // (1) 标题
-      displayText += `📌 **标题**: ${data.title || '未提取到标题'}\n\n`;
-      
-      // (2) 摘要
-      displayText += `📝 **摘要**: ${data.summary || '未提取到摘要'}\n\n`;
+      // 使用Markdown卡片和分隔线创建清晰的视觉层次
+      displayText += `# AI内容分析结果
 
-      // (3) 情感 (新增展示)
-      // 可能会返回 "positive"/"negative" 或中文，做个简单的容错
+`;
+
+      // (1) 标题 - 使用一级标题强调
+      displayText += `## 标题
+**${data.title || '未提取到标题'}**\n\n`;
+      
+      // (2) 摘要 - 使用代码块样式美化
+      displayText += `## 摘要
+> ${data.summary || '未提取到摘要'}\n\n`;
+      
+      // (3) 情感 - 更好的情感展示
       const sentimentMap: Record<string, string> = {
         'positive': '正面 👍',
         'negative': '负面 👎',
         'neutral': '中性 😐'
       };
       const sentimentShow = sentimentMap[data.sentiment] || data.sentiment || '未知';
-      displayText += `mood **情感**: ${sentimentShow}\n\n`;
-
-      // (4) 标签
+      displayText += `## 情感分析
+${sentimentShow}\n\n`;
+      
+      // (4) 标签 - 使用Markdown列表格式
+      displayText += `## 关键词标签\n`;
       if (Array.isArray(data.tags) && data.tags.length > 0) {
-        displayText += `🏷️ **标签**: ${data.tags.join(', ')}`;
+        // 使用Markdown列表语法
+        displayText += data.tags.map((tag:string) => `- ${tag}`).join('\n');
       } else {
-        displayText += `🏷️ **标签**: 无`;
+        displayText += '无';
       }
+      
+      // 添加分隔线和来源信息（使用meta-info类）
+      displayText += `\n\n---\n<div class="meta-info">生成于: ${new Date().toLocaleString()}<br>模型: ${selectedModel.name}</div>`;
 
       // 3. 更新聊天记录
       setChatHistory(prev => [...prev, { 
@@ -260,7 +274,7 @@ function SidePanel() {
   };
 
 // =================================================================================
-  //  🟢 5. 处理导出到飞书
+  //   处理导出到飞书
   // =================================================================================
   const handleExportToFeishu = async () => {
     if (!structuredData) return;
@@ -428,7 +442,13 @@ function SidePanel() {
       <div className="chat-container">
         {chatHistory.map((msg, idx) => (
           <div key={idx} className={`message ${msg.role}`}>
-            {msg.text}
+            {msg.role === 'ai' ? (
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                {msg.text}
+              </ReactMarkdown>
+            ) : (
+              msg.text
+            )}
           </div>
         ))}
         <div ref={chatEndRef} />
@@ -449,45 +469,64 @@ function SidePanel() {
     </div>
   );
 
+  // 右侧导航按钮组件
+  const renderRightNavigation = () => (
+    <div className="right-navigation">
+      {/* 剪藏页面按钮 */}
+      <button 
+        className={`nav-button ${view === 'clipper' ? 'active' : ''}`}
+        onClick={() => setView('clipper')}
+        title="剪藏页面"
+      >
+        <FileText size={20} />
+      </button>
+      
+      {/* AI对话界面按钮 */}
+      <button 
+        className={`nav-button ${view === 'chat' ? 'active' : ''}`}
+        onClick={() => {
+          if (structuredData) {
+            setView('chat');
+          }
+        }}
+        disabled={!structuredData}
+        title={structuredData ? "AI对话界面" : "请先分析内容"}
+      >
+        <MessageSquare size={20} />
+      </button>
+      
+      {/* 导出到飞书按钮 */}
+      <button 
+        className={`nav-button feishu-export-btn ${saveStatus === 'success' ? 'success' : ''}`}
+        onClick={handleExportToFeishu}
+        disabled={isSaving || saveStatus === 'success' || !structuredData}
+        title="导出到飞书"
+      >
+        {isSaving ? (
+          <Loader2 size={16} className="spin" />
+        ) : saveStatus === 'success' ? (
+          <CheckCircle size={16} />
+        ) : (
+          <CloudUpload size={16} />
+        )}
+      </button>
+    </div>
+  );
+
   return (
-    <>
-      <div className="header">
-        <div className="brand">
-          {view === 'chat' && (
-            <ArrowLeft size={20} style={{cursor:'pointer', marginRight:'8px'}} onClick={() => setView('clipper')} />
-          )}
-          {view === 'chat' ? <MessageSquare size={20} color="#2563eb"/> : <Bot size={20} color="#2563eb" />}
-          <span>{view === 'chat' ? 'AI 助手' : 'AI Clipper'}</span>
+    <div className="sidepanel-container">
+      <div className="main-content">
+        <div className="header">
+          <div className="brand">
+            {view === 'chat' ? <MessageSquare size={20} color="#2563eb"/> : <Bot size={20} color="#2563eb" />}
+            <span>{view === 'chat' ? 'AI 助手' : 'AI Clipper'}</span>
+          </div>
         </div>
 
-        {/* 🟢 右上角按钮区域 
-            如果是 'chat' 视图且有数据，显示炫酷的“导出飞书”按钮,否则显示默认的设置图标 
-        */}
-        {view === 'chat' && structuredData ? (
-          <button 
-            className={`feishu-export-btn ${saveStatus === 'success' ? 'success' : ''}`}
-            onClick={handleExportToFeishu}
-            disabled={isSaving || saveStatus === 'success'}
-          >
-            {isSaving ? (
-              <Loader2 size={14} className="spin" />
-            ) : saveStatus === 'success' ? (
-              <>
-                <CheckCircle size={14} /> <span>已保存</span>
-              </>
-            ) : (
-              <>
-                <CloudUpload size={14} /> <span>存飞书</span>
-              </>
-            )}
-          </button>
-        ) : (
-          <Settings size={18} color="#94a3b8" />
-        )}
+        {view === 'clipper' ? renderClipperView() : renderChatView()}
       </div>
-
-      {view === 'clipper' ? renderClipperView() : renderChatView()}
-    </>
+      {renderRightNavigation()}
+    </div>
   );
 }
 
