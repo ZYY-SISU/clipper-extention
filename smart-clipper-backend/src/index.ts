@@ -2,27 +2,36 @@
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+
+// 引入服务
 import { analyzeText } from './services/aiService';
 import { processContent, processChat } from './services/ai_handler';//胡同学的ai模块
-import { addRecord } from './services/feishuService'; // <--- 导入新写的服务
+import { addRecord } from './services/feishuService'; 
+import { getUserInfo } from './services/authService';
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
-import { AnalyzeRequest, TemplateConfig } from './types'; // 引入类型定义
+
+// 🟢 引入统一类型
+import { TemplateConfig, SaveOptions, FeishuData } from './types';
 
 // 1. 配置加载
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
 // 定义一个空数组，用来暂存用户自定义的模板
 let userTemplates: TemplateConfig[] = [];
+
 
 // 2. 中间件，允许跨域：这对于浏览器插件至关重要
 app.use(cors()); 
 // 解析 JSON 请求体
 app.use(express.json());
 
-// 3. 路由定义
+
+
+//////////////////////////////////////////3. 路由定义/////////////////////////////////////////
 
 
 // 👇健康检查接口 (Ping)
@@ -37,6 +46,21 @@ app.get('/api/templates', (req: Request, res: Response) => {
     code: 200,
     data: allTemplates
   });
+});
+
+// 🟢 登录接口 (对接 Auth Service)
+app.post('/api/login', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      res.status(400).json({ error: '缺少 code' });
+      return;
+    }
+    const result = await getUserInfo(code);
+    res.json({ code: 200, data: result });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 
@@ -116,19 +140,29 @@ app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
 // 👇 保存到飞书接口 
 app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
   try {
-    // 从前端请求体中解构数据
-    const { title, summary, tags, sentiment, url } = req.body;
+    // 🟢 从前端接收所有必要信息
+    const { 
+      title, summary, tags, sentiment, url, // 数据内容
+      userAccessToken, appToken, tableId    // 身份与目标
+    } = req.body;
 
     // 简单的校验
-    if (!title || !summary) {
-      res.status(400).json({ error: '缺少必要的数据字段' });
+    if (!userAccessToken) {
+      res.status(401).json({ error: '未登录飞书' });
+      return;
+    }
+    if (!appToken || !tableId) {
+      res.status(400).json({ error: '未配置目标表格' });
       return;
     }
 
-    // 调用飞书服务
-    await addRecord({ title, summary, tags, sentiment, url });
+    // 调用服务
+    await addRecord(
+      { title, summary, tags, sentiment, url }, 
+      { userAccessToken, appToken, tableId }
+    );
 
-    res.json({ success: true, message: '已同步到飞书' });
+    res.json({ success: true, message: '已同步到您的飞书' });
 
   } catch (error: any) {
     console.error(error);
