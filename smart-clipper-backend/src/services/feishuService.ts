@@ -1,18 +1,18 @@
 // src/services/feishuService.ts
 import axios from 'axios';
 import dotenv from 'dotenv';
-
+import { FeishuData, SaveOptions } from '../types';
 dotenv.config();
 
-// 定义接收的数据结构
-interface FeishuData {
-  title: string;
-  summary: string;
-  tags: string[]; // 这里虽然定义为数组，但运行时可能是 undefined
-  sentiment: string;
-  url: string;
-  [key: string]: any; // 允许其他动态字段
-}
+// // 定义接收的数据结构
+// interface FeishuData {
+//   title: string;
+//   summary: string;
+//   tags: string[]; // 这里虽然定义为数组，但运行时可能是 undefined
+//   sentiment: string;
+//   url: string;
+//   [key: string]: any; // 允许其他动态字段
+// }
 
 /**
  * 内部方法：获取 tenant_access_token
@@ -48,17 +48,16 @@ async function getTenantAccessToken(): Promise<string> {
 /**
  * 核心方法：写入多维表格
  */
-export const addRecord = async (data: FeishuData) => {
-  const appToken = process.env.FEISHU_APP_TOKEN;
-  const tableId = process.env.FEISHU_TABLE_ID;
+export const addRecord = async (data: FeishuData, options: SaveOptions) => {
+ const { userAccessToken, appToken, tableId } = options;
 
-  if (!appToken || !tableId) {
-    throw new Error("缺少飞书表格 Token 或 Table ID 配置");
+  if (!userAccessToken || !appToken || !tableId) {
+    throw new Error("缺少必要的飞书配置信息 (Token/AppToken/TableId)");
   }
 
   try {
     // 1. 拿钥匙
-    const token = await getTenantAccessToken();
+    //const token = await getTenantAccessToken();
 
     // 2. 组装数据 (关键修复：增加安全判断)
     const fields: any = {
@@ -83,7 +82,7 @@ export const addRecord = async (data: FeishuData) => {
       { fields },
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${userAccessToken}`, // 🟢 使用用户身份
           'Content-Type': 'application/json'
         }
       }

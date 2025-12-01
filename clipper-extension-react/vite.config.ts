@@ -15,7 +15,14 @@ const manifest = defineManifest({
     "128": "icons/icon-128.png"
   },
   // 权限申请
-  permissions: ["sidePanel", "activeTab", "scripting", "tabs", "storage"], 
+  permissions: [
+    "sidePanel", 
+    "activeTab", 
+    "scripting", 
+    "tabs", 
+    "storage",
+    "identity" // 🟢 必须新增这个权限！浏览器自带的身份验证功能
+    ], 
   // 侧边栏配置
   side_panel: {
     default_path: "src/sidepanel/index.html"
