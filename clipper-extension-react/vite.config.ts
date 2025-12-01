@@ -15,7 +15,14 @@ const manifest = defineManifest({
     "128": "icons/icon-128.png"
   },
   // 权限申请
-  permissions: ["sidePanel", "activeTab", "scripting", "tabs", "storage"], 
+  permissions: [
+    "sidePanel", 
+    "activeTab", 
+    "scripting", 
+    "tabs", 
+    "storage",
+    "identity" // 🟢 必须新增这个权限！浏览器自带的身份验证功能
+    ], 
   // 侧边栏配置
   side_panel: {
     default_path: "src/sidepanel/index.html"
@@ -52,22 +59,5 @@ export default defineConfig({
   ],
   server: {
     port: 5174,
-  },
-  // 优化配置，解决大块代码警告
-  build: {
-    // 增加chunk大小警告限制
-    chunkSizeWarningLimit: 1000, // 默认是500
-    // 手动代码分割
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // 将react-markdown和相关插件单独打包
-          'markdown': ['react-markdown', 'rehype-raw'],
-          // 将第三方库分开打包
-          'react-vendor': ['react', 'react-dom'],
-          'lucide': ['lucide-react'],
-        },
-      },
-    },
   }
 })

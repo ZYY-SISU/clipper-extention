@@ -8,6 +8,8 @@
   --radius: 16px;
 }
 
+
+
 body {
   margin: 0;
   background-color: var(--bg-color);
@@ -513,43 +515,67 @@ body {
   cursor: pointer;
 }
 
-/* 🟢 右上角飞书导出按钮 */
 .feishu-export-btn {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 8px 16px; /* 稍微大一点，更有质感 */
+  border-radius: 24px;
   border: none;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
   cursor: pointer;
+  overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   
-  /* 默认状态：飞书风格渐变 */
-  background: linear-gradient(135deg, #00d6b9 0%, #3370ff 100%);
-  color: white;
-  box-shadow: 0 2px 8px rgba(51, 112, 255, 0.25);
+  /* 🌈 核心：流动的渐变背景 */
+  background: linear-gradient(
+    90deg, 
+    #3370ff 0%, 
+    #00d6b9 50%, 
+    #3370ff 100%
+  );
+  background-size: 200% auto;
+  animation: gradient-flow 3s linear infinite;
+
+  /* ✨ 初始光晕 */
+  box-shadow: 0 4px 15px rgba(51, 112, 255, 0.3);
 }
 
-.feishu-export-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(51, 112, 255, 0.4);
-  filter: brightness(1.05);
+/* 鼠标悬停：放大 + 强光晕 */
+.feishu-export-btn:not(:disabled):hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(0, 214, 185, 0.5);
+  letter-spacing: 0.5px; /* 文字微微散开 */
 }
 
+/* 鼠标点击：按压感 */
 .feishu-export-btn:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.95);
 }
 
-/* 成功状态：绿色 */
+/* --- 状态：禁用/加载中 --- */
+.feishu-export-btn:disabled {
+  opacity: 0.8;
+  cursor: wait;
+  background: #94a3b8; /* 灰色 */
+  animation: none;
+  box-shadow: none;
+}
+
+/* --- 状态：成功 (变身！) --- */
 .feishu-export-btn.success {
-  background: #10b981; /* Emerald 500 */
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  background: #10b981; /* 鲜艳的翡翠绿 */
+  background-size: 100%;
+  animation: pulse-green 1.5s infinite; /* 成功后的脉冲波纹 */
+  padding-left: 20px; /* 调整一下布局 */
   cursor: default;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
 }
 
-/* Loading 旋转动画 */
+/* Loading 图标旋转 */
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -590,6 +616,21 @@ body {
   gap: 24px;
   padding: 24px 0;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.02);
+}
+
+/* 🔴 [新增] 右侧导航栏按钮组 */
+.nav-group-top,
+.nav-group-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px; /* 保持按钮间的原始间距 */
+  width: 100%;
+}
+
+/* 将底部按钮组推到底部 */
+.nav-group-bottom {
+  margin-top: auto;
 }
 
 /* 导航按钮样式 */
@@ -693,4 +734,112 @@ body {
 
 *::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* 🔴 [新增] 设置页面样式 */
+.settings-container {
+  padding: 32px;
+  gap: 24px;
+}
+
+.settings-description {
+  font-size: 14px;
+  color: var(--text-sub);
+  margin: -12px 0 12px 0;
+  line-height: 1.6;
+}
+
+.setting-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-main);
+}
+
+.setting-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  transition: all 0.2s;
+  background: #fdfdfe;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.save-settings-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  background-color: var(--primary-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-settings-btn:hover {
+  background-color: var(--primary-hover);
+}
+
+/* 🔴 [新增] 右侧导航栏用户部分 */
+.nav-separator {
+  width: 60%;
+  height: 1px;
+  background-color: var(--border);
+  margin: 0px 0; /* 上下边距调整 */
+}
+
+.user-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto; /* 将用户profile推到底部 */
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.user-avatar:hover {
+  transform: scale(1.1);
+}
+
+.logout-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: #9ca3af;
+}
+
+.logout-button:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+/* 调整导出按钮边距，使其与用户profile分开 */
+.nav-button.feishu-export-btn {
+  margin-top: 24px;
 }
