@@ -102,3 +102,8 @@ export interface LinkData {
   href: string;
   text: string;
 }
+
+export interface UserConfig {
+    appToken: string;
+    tableId: string;
+  }

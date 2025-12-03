@@ -3,10 +3,11 @@ import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 
+
 // 引入服务
 import { analyzeText } from './services/aiService';
 import { processContent, processChat } from './services/ai_handler';//胡同学的ai模块
-import { addRecord } from './services/feishuService'; 
+import { addRecord , initUserBase} from './services/feishuService'; 
 import { getUserInfo } from './services/authService';
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
@@ -170,7 +171,25 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// 🟢 [新增] 初始化接口
+app.post('/api/init-feishu', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userAccessToken } = req.body;
+    if (!userAccessToken) {
+      res.status(401).json({ error: '缺少 User Token' });
+      return;
+    }
 
+    // 调用 Service 创建表格
+    const config = await initUserBase(userAccessToken);
+    
+    // 把创建好的 ID 返回给前端保存
+    res.json({ code: 200, data: config });
+
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // 4. 启动服务
 app.listen(PORT, () => {
