@@ -17,8 +17,10 @@ async function init() {
   // 注册消息监听器
   chrome.runtime.onMessage.addListener(handleMessage)
 
-  // 预加载模板列表
-  await fetchTemplates();
+  // 预加载模板列表（不阻塞初始化，静默失败）
+  fetchTemplates().catch(err => {
+    console.warn('模板列表预加载失败（不影响使用）:', err);
+  });
 
   console.log('Background script 初始化完成')
 }
@@ -66,21 +68,41 @@ function handleMessage(request: requestType, _: senderType, sendResponse: sendRe
   }
 }
 
+// 默认模板列表（当后端服务不可用时使用）
+const DEFAULT_TEMPLATES: templateType[] = [
+  { id: 'summary', name: '智能摘要', iconType: 'text' },
+  { id: 'table', name: '表格提取', iconType: 'table' },
+  { id: 'checklist', name: '清单整理', iconType: 'check' },
+];
+
 // 获取模板列表
 async function fetchTemplates() { 
   try {
-    const res = await fetch('http://localhost:3000/api/templates');
+    const res = await fetch('http://localhost:3000/api/templates', {
+      // 设置超时，避免长时间等待
+      signal: AbortSignal.timeout(3000)
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const json = await res.json();
 
-    if(json.code === 200) {
+    if(json.code === 200 && Array.isArray(json.data)) {
       globalState.templates = json.data;
-      globalState.isLoadingTemplates = false
+      globalState.isLoadingTemplates = false;
+      console.log('✅ 模板列表加载成功:', json.data.length, '个模板');
       return json.data;
-    }else {
+    } else {
       throw new Error(json.message || '获取模板列表失败');
     }
-  }catch(error) {
-    console.error('获取模板列表失败:', error);
+  } catch(error: any) {
+    // 后端服务未启动或网络错误时，使用默认模板
+    console.warn('⚠️ 后端服务不可用，使用默认模板列表:', error.message);
+    globalState.templates = DEFAULT_TEMPLATES;
+    globalState.isLoadingTemplates = false;
+    return DEFAULT_TEMPLATES;
   }
 }
 
