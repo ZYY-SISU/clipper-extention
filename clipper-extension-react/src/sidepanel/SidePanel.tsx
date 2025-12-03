@@ -74,19 +74,38 @@ function SidePanel() {
   // =================================================================================
   useEffect(() => {
     const fetchTemplates = async () => {
-      console.log("🚀 前端正在尝试连接后端..."); // <--- 加上这一句
+      console.log("🚀 前端正在尝试连接后端...");
       try {
-        // 请求后端接口
-        const res = await fetch('http://localhost:3000/api/templates');
+        // 请求后端接口，设置超时
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const res = await fetch('http://localhost:3000/api/templates', {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
         const json = await res.json();
         
-        if (json.code === 200) {
+        if (json.code === 200 && Array.isArray(json.data)) {
           setTemplates(json.data); // 将后端返回的数组存入状态
+          console.log("✅ 模板列表加载成功:", json.data.length, "个模板");
+        } else {
+          throw new Error(json.message || '获取模板列表失败');
         }
-      } catch (error) {
-        console.error("获取模版失败:", error);
-        // 兜底策略：如果后端没开，显示一个默认的
-        setTemplates([{ id: 'summary', name: '智能摘要(离线)', iconType: 'text' }]);
+      } catch (error: any) {
+        // 后端服务未启动或网络错误时，使用默认模板
+        console.warn("⚠️ 后端服务不可用，使用默认模板:", error.message);
+        // 兜底策略：如果后端没开，显示默认模板
+        setTemplates([
+          { id: 'summary', name: '智能摘要', iconType: 'text' },
+          { id: 'table', name: '表格提取', iconType: 'table' },
+          { id: 'checklist', name: '清单整理', iconType: 'check' }
+        ]);
       } finally {
         setIsLoadingTemplates(false); // 无论成功失败，都结束加载状态
       }

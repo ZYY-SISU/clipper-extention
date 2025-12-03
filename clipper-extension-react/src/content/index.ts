@@ -1,22 +1,104 @@
-// src/content/index.js
+// src/content/index.ts
 console.log('AI剪藏助手：通用智能抓取脚本已就绪');
 
 // ============【类型定义】=================
-import type{ SelectionData, PageMeta, PageData, ImageData, LinkData } from '../types/index';
+import type{ SelectionData, PageMeta, PageData, ImageData, LinkData, ClipContentPayload } from '../types/index';
 
 // =============【状态管理】================
 let toolbar: HTMLElement | null = null;
 let selectedData: SelectionData | null = null;
 let toastElement: HTMLElement | null = null;
+let loadingToast: HTMLElement | null = null;
+
+// =============【工具函数】================
+/**
+ * 将相对URL转换为绝对URL
+ */
+function resolveUrl(url: string, baseUrl: string = window.location.href): string {
+  try {
+    // 如果已经是绝对URL，直接返回
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
+      return url.startsWith('//') ? `https:${url}` : url;
+    }
+    // 转换为绝对URL
+    return new URL(url, baseUrl).href;
+  } catch (e) {
+    console.warn('URL转换失败:', url, e);
+    return url;
+  }
+}
+
+/**
+ * 过滤和去重图片
+ */
+function filterAndDeduplicateImages(images: ImageData[]): ImageData[] {
+  const seen = new Set<string>();
+  const filtered: ImageData[] = [];
+  
+  for (const img of images) {
+    // 转换为绝对URL
+    const absoluteSrc = resolveUrl(img.src);
+    
+    // 过滤条件：
+    // 1. 不是data:image
+    // 2. 不是空字符串
+    // 3. 去重
+    // 4. 过滤太小的图片（可能是图标）
+    if (
+      !absoluteSrc.startsWith('data:image') &&
+      absoluteSrc.length > 0 &&
+      !seen.has(absoluteSrc) &&
+      (img.width === undefined || img.width > 50) &&
+      (img.height === undefined || img.height > 50)
+    ) {
+      seen.add(absoluteSrc);
+      filtered.push({
+        ...img,
+        src: absoluteSrc
+      });
+    }
+  }
+  
+  return filtered.slice(0, 20); // 最多20张图片
+}
+
+/**
+ * 过滤和去重链接
+ */
+function filterAndDeduplicateLinks(links: LinkData[]): LinkData[] {
+  const seen = new Set<string>();
+  const filtered: LinkData[] = [];
+  
+  for (const link of links) {
+    // 转换为绝对URL
+    const absoluteHref = resolveUrl(link.href);
+    
+    // 过滤条件：
+    // 1. 是http或https协议
+    // 2. 有文本内容
+    // 3. 去重
+    if (
+      (absoluteHref.startsWith('http://') || absoluteHref.startsWith('https://')) &&
+      link.text.trim().length > 0 &&
+      !seen.has(absoluteHref)
+    ) {
+      seen.add(absoluteHref);
+      filtered.push({
+        ...link,
+        href: absoluteHref
+      });
+    }
+  }
+  
+  return filtered.slice(0, 50); // 最多50个链接
+}
 
 // =============【元数据获取函数】================
 // 依次尝试传入的选择器，返回第一个获取到的非空值
 function getMetaContent(selectors: string[]): string {
   for (const selector of selectors) {
-    // 尝试获取 meta 标签的 content 属性
     const element = document.querySelector(selector);
     if (element) {
-      // 兼容 innerText (如 title 标签) 和 content (如 meta 标签)
       const content = element.getAttribute('content') || (element as HTMLElement).innerText;
       if (content && content.trim()) return content.trim();
     }
@@ -26,8 +108,7 @@ function getMetaContent(selectors: string[]): string {
 
 // 获取页面元信息
 function getPageMeta(): PageMeta {
-  const getMeta = (name:string):string => {
-    // 优先使用 getMetaContent 函数的选择器逻辑
+  const getMeta = (name: string): string => {
     return getMetaContent([
       `meta[property="${name}"]`,
       `meta[name="${name}"]`
@@ -43,7 +124,7 @@ function getPageMeta(): PageMeta {
   ]) || '未命名网页';
   const description = getMeta('description') || getMeta('og:description') || '暂无简介';
   const author = getMeta('author') || getMeta('article:author') || '未命名作者';
-  const siteName = getMeta('og:site_name') || new URL(window.location.href).hostname
+  const siteName = getMeta('og:site_name') || new URL(window.location.href).hostname;
   const publishedTime = getMeta('article:published_time') || '未指定时间';
   const image = getMetaContent([
     'meta[property="og:image"]',
@@ -58,15 +139,14 @@ function getPageMeta(): PageMeta {
     author,
     siteName,
     publishedTime,
-    image,
+    image: image ? resolveUrl(image) : '',
     clipTime: new Date().toISOString()
   };
-
 }
 
 // 通用页面解析器
 // 不依赖特定网站结构，而是依赖通用的互联网标准 (Open Graph)
-function extractUniversalContent() {
+function extractUniversalContent(): ClipContentPayload {
   const url = window.location.href;
 
   // 1. 获取标题
@@ -98,10 +178,12 @@ function extractUniversalContent() {
                   url.includes('youtube.com/watch');
 
   // 5. 组装数据
+  const meta = getPageMeta();
+  
   return {
-    type: isVideo ? 'VIDEO_CLIP' : 'PAGE_CLIP',
-    text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${image})` : ''}`,
-    raw: { title, url, desc, image, isVideo }
+    text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${resolveUrl(image)})` : ''}`,
+    sourceUrl: url,
+    meta: meta
   };
 }
 
@@ -250,6 +332,14 @@ function createToolbar(): HTMLElement {
       background: rgba(52, 152, 219, 0.9) !important;
     }
     
+    body .sc-toast.warning {
+      background: rgba(241, 196, 15, 0.9) !important;
+    }
+    
+    body .sc-toast.loading {
+      background: rgba(52, 152, 219, 0.9) !important;
+    }
+    
     /* 选中高亮样式 - 增强可见性 */
     body .sc-selection-highlight {
       background-color: rgba(102, 126, 234, 0.3) !important;
@@ -277,7 +367,7 @@ function createToolbar(): HTMLElement {
   document.head.appendChild(styleElement);
 
   const toolbarElement = document.createElement('div');
-  toolbarElement.id = 'smart-clipper-toolbar'
+  toolbarElement.id = 'smart-clipper-toolbar';
   toolbarElement.innerHTML = `
     <button id="sc-clip-selection" title="剪藏选中内容">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -335,8 +425,9 @@ function hideToolbar(): void {
 // ==================【Toast提示】====================
 function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' | 'loading' = 'info'): HTMLElement {
   // 移除已有的toast
-  if (toastElement) {
+  if (toastElement && type !== 'loading') {
     toastElement.remove();
+    toastElement = null;
   }
 
   const toast = document.createElement('div');
@@ -344,14 +435,26 @@ function showToast(message: string, type: 'info' | 'success' | 'error' | 'warnin
   toast.textContent = message;
   document.body.appendChild(toast);
   
-  toastElement = toast;
+  // 强制显示
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 10);
 
-  // 自动消失
+  if (type === 'loading') {
+    loadingToast = toast;
+  } else {
+    toastElement = toast;
+  }
+
+  // 自动消失（loading类型需要手动移除）
   if (type !== 'loading') {
     setTimeout(() => {
       if (toastElement === toast) {
-        toast.remove();
-        toastElement = null;
+        toast.classList.remove('show');
+        setTimeout(() => {
+          toast.remove();
+          toastElement = null;
+        }, 300);
       }
     }, 3000);
   }
@@ -359,6 +462,15 @@ function showToast(message: string, type: 'info' | 'success' | 'error' | 'warnin
   return toast;
 }
 
+function hideLoadingToast(): void {
+  if (loadingToast) {
+    loadingToast.classList.remove('show');
+    setTimeout(() => {
+      loadingToast?.remove();
+      loadingToast = null;
+    }, 300);
+  }
+}
 
 // ============= 【数据提取】================
 // 提取选区数据
@@ -374,35 +486,42 @@ function extractSelectionContent(selection: Selection, range: Range): SelectionD
   // 提取选区内的图片
   const images: ImageData[] = [];
   container.querySelectorAll('img').forEach(img => {
-    images.push({
-      src: img.src,
-      alt: img.alt || '',
-      width: img.naturalWidth,
-      height: img.naturalHeight
-    });
+    const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '';
+    if (src) {
+      images.push({
+        src: src,
+        alt: img.alt || '',
+        width: img.naturalWidth || img.width || 0,
+        height: img.naturalHeight || img.height || 0
+      });
+    }
   });
 
   // 提取选区内的链接
   const links: LinkData[] = [];
-  container.querySelectorAll('a').forEach(a => {
-    links.push({
-      href: a.href,
-      text: a.textContent || ''
-    });
+  container.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (href) {
+      const htmlElement = a as HTMLElement;
+      links.push({
+        href: href,
+        text: (a.textContent || htmlElement.innerText || '').trim()
+      });
+    }
   });
 
   return {
     type: 'selection',
     text,
     html,
-    images,
-    links,
+    images: filterAndDeduplicateImages(images),
+    links: filterAndDeduplicateLinks(links),
     meta: getPageMeta()
   };
 }
 
- // 提取整页数据
- function extractFullPageData(): PageData {
+// 提取整页数据
+function extractFullPageData(): PageData {
   // 获取主要内容区域（尝试智能识别正文）
   const article = document.querySelector('article') 
     || document.querySelector('[role="main"]')
@@ -424,35 +543,80 @@ function extractSelectionContent(selection: Selection, range: Range): SelectionD
   // 提取所有图片
   const images: ImageData[] = [];
   clone.querySelectorAll('img').forEach(img => {
-    if (img.src && !img.src.includes('data:image')) {
+    const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '';
+    if (src && !src.startsWith('data:image')) {
       images.push({
-        src: img.src,
-        alt: img.alt || ''
+        src: src,
+        alt: img.alt || '',
+        width: img.naturalWidth || img.width || 0,
+        height: img.naturalHeight || img.height || 0
       });
     }
   });
 
   // 提取所有链接
   const links: LinkData[] = [];
-  clone.querySelectorAll('a').forEach(a => {
-    links.push({
-      href: a.href,
-      text: a.textContent || ''
-    });
+  clone.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (href) {
+      const htmlElement = a as HTMLElement;
+      links.push({
+        href: href,
+        text: (a.textContent || htmlElement.innerText || '').trim()
+      });
+    }
   });
 
   return {
     type: 'page',
     text,
     html,
-    images,
-    links,
+    images: filterAndDeduplicateImages(images),
+    links: filterAndDeduplicateLinks(links),
     meta: getPageMeta()
   };
- }
+}
 
+/**
+ * 将SelectionData或PageData转换为ClipContentPayload格式
+ */
+function convertToClipPayload(data: SelectionData | PageData): ClipContentPayload {
+  // 构建Markdown格式的文本
+  let markdownText = data.text;
+  
+  // 添加图片信息
+  if (data.images && data.images.length > 0) {
+    markdownText += `\n\n## 图片 (${data.images.length}张)\n\n`;
+    data.images.slice(0, 5).forEach((img, idx) => {
+      markdownText += `${idx + 1}. ![${img.alt || '图片'}](${img.src})\n`;
+    });
+    if (data.images.length > 5) {
+      markdownText += `\n...还有 ${data.images.length - 5} 张图片\n`;
+    }
+  }
 
- // ===============【事件处理】==================
+  // 添加链接信息
+  if (data.links && data.links.length > 0) {
+    markdownText += `\n\n## 链接 (${data.links.length}个)\n\n`;
+    data.links.slice(0, 10).forEach((link) => {
+      markdownText += `- [${link.text || link.href}](${link.href})\n`;
+    });
+    if (data.links.length > 10) {
+      markdownText += `\n...还有 ${data.links.length - 10} 个链接\n`;
+    }
+  }
+
+  return {
+    text: markdownText,
+    html: data.html,
+    images: data.images,
+    links: data.links,
+    meta: data.meta,
+    sourceUrl: data.meta.url
+  };
+}
+
+// ===============【事件处理】==================
 // 选中文本：保存选中的数据 + 显示工具栏
 function handleMouseUp(e: MouseEvent): void {
   // 如果点击的是工具栏本身，不处理
@@ -473,6 +637,8 @@ function handleMouseUp(e: MouseEvent): void {
     
     // 显示工具栏
     showToolbar(rect);
+  } else {
+    hideToolbar();
   }
 }
 
@@ -487,20 +653,22 @@ function handleMouseDown(e: MouseEvent): void {
 // =================【剪藏操作】=====================
 // 剪藏选中内容
 async function clipSelection() {
-  if(!selectedData) {
+  if (!selectedData) {
     showToast('请先选择要剪藏的内容', 'warning');
     return;
   }
 
   hideToolbar();
-  await sendToBackground(selectedData);
+  const payload = convertToClipPayload(selectedData);
+  await sendToBackground(payload);
 }
 
 // 剪藏整页内容
 async function clipFullPage() {
   hideToolbar();
   const fullPageData = extractFullPageData();
-  await sendToBackground(fullPageData);
+  const payload = convertToClipPayload(fullPageData);
+  await sendToBackground(payload);
 }
 
 // 通用页面内容提取（用于自动剪藏）
@@ -513,29 +681,35 @@ function extractAndSendUniversalContent(): void {
 }
 
 // =================【发送消息】======================
-async function sendToBackground(data: SelectionData | PageData) {
+async function sendToBackground(payload: ClipContentPayload) {
   try {
     // 显示loading 状态
-    showToast('正在发送剪藏请求...', 'loading')
+    showToast('正在发送剪藏请求...', 'loading');
 
     // 发送消息
     const response = await chrome.runtime.sendMessage({
       type: 'CLIP_CONTENT',
-      payload: data
+      payload: payload
     });
 
-    if(response && response.status === 'success') {
+    // 隐藏loading toast
+    hideLoadingToast();
+
+    if (response && response.status === 'success') {
       showToast('剪藏成功！', 'success');
-    }else {
+      // 清除选中
+      window.getSelection()?.removeAllRanges();
+      selectedData = null;
+    } else {
       showToast('发送剪藏失败，请稍后再试', 'error');
     }
 
-  }catch (error) {
+  } catch (error) {
     console.error('[SmartClipper] Error:', error);
+    hideLoadingToast();
     showToast('发送剪藏失败，请稍后再试', 'error');
   }
 }
-
 
 // =================【初始化】==========================
 function init() {
@@ -545,6 +719,7 @@ function init() {
   // 绑定事件监听
   document.addEventListener('mouseup', handleMouseUp);
   document.addEventListener('mousedown', handleMouseDown);
+  
   // 添加滚动监听，使工具栏跟随文本移动
   window.addEventListener('scroll', () => {
     if (toolbar && toolbar.classList.contains('visible') && selectedData) {
@@ -553,11 +728,13 @@ function init() {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         showToolbar(rect);
+      } else {
+        hideToolbar();
       }
     }
-  });
+  }, true);
   
-  // 添加拖动和缩放监听，确保工具栏位置正确
+  // 添加窗口大小变化监听，确保工具栏位置正确
   window.addEventListener('resize', () => {
     if (toolbar && toolbar.classList.contains('visible') && selectedData) {
       const selection = window.getSelection();
@@ -565,16 +742,18 @@ function init() {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         showToolbar(rect);
+      } else {
+        hideToolbar();
       }
     }
   });
 
   // 工具栏点击事件
-  toolbar.querySelector('#sc-clip-selection')?.addEventListener('click', clipSelection)
+  toolbar.querySelector('#sc-clip-selection')?.addEventListener('click', clipSelection);
   toolbar.querySelector('#sc-clip-page')?.addEventListener('click', clipFullPage);
 
   // 1. 页面加载完成后，自动尝试提取整页信息
-  window.addEventListener('load',() => {
+  window.addEventListener('load', () => {
     setTimeout(() => {
       // 只有当用户没有进行划词操作时，才发送整页数据，避免打扰
       const selection = window.getSelection()?.toString().trim() || '';
@@ -582,7 +761,7 @@ function init() {
         extractAndSendUniversalContent();
       }
     }, 1500);
-  })
+  });
 
   // 2. 监听 URL 变化 (针对 B站、YouTube 这类单页应用切换视频)
   let lastUrl = window.location.href;
@@ -607,5 +786,5 @@ if (document.readyState === 'loading') {
     init();
   });
 } else {
-  init()
+  init();
 }
