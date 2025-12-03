@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import { 
-  FileText, Table, CheckSquare, Sparkles, Bot, 
+import {
+  FileText, Table, CheckSquare, Sparkles, Bot,
   Star, Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe,
 
@@ -13,6 +13,8 @@ import {
   Settings      // 🟢 新增：用于设置图标
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType } from '../types/index';
+import { ChatStorage } from '../utils/chatStorage';
+import type { ChatMessage } from '../utils/chatStorage';
 import './SidePanel.css';
 
 // --- 1. 定义模型列表 ---
@@ -51,7 +53,8 @@ function SidePanel() {
   // 聊天与打分
   const [rating, setRating] = useState(0); 
   const [userNote, setUserNote] = useState('');
-  const [chatHistory, setChatHistory] = useState<any[]>([]);;
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [currentUrl, setCurrentUrl] = useState<string>('');
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -70,26 +73,65 @@ function SidePanel() {
   }, []);
 
   // =================================================================================
-  // 监听标签页切换事件，当切换标签页时，获取当前页面内容
+  // 组件挂载时加载初始数据
+  // =================================================================================
+  useEffect(() => {
+    const loadInitialData = async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url) {
+        setCurrentUrl(tab.url);
+        const history = ChatStorage.getChatHistory(tab.url);
+        setChatHistory(history);
+      }
+    };
+    loadInitialData();
+  }, []);
+
+  // =================================================================================
+  // 聊天记录更新时自动保存
+  // =================================================================================
+  useEffect(() => {
+    if (currentUrl && chatHistory.length > 0) {
+      ChatStorage.saveChatHistory(currentUrl, chatHistory);
+    }
+  }, [chatHistory, currentUrl]);
+
+  // =================================================================================
+  // 监听标签页切换事件，当切换标签页时，获取当前页面内容和聊天记录
   // =================================================================================
   useEffect(() => {
     // 标签页切换时触发
     const handleTabChange = async () => {
       try {
+        // 先保存当前页面的聊天记录
+        if (currentUrl) {
+          ChatStorage.saveChatHistory(currentUrl, chatHistory);
+        }
+        
         // 获取当前活动标签页
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab && tab.id) {
-          // 向当前标签页的内容脚本发送消息，请求内容
-          const pageData = await chrome.tabs.sendMessage(tab.id, {
-            type: 'REQUEST_CONTENT'
-          }).catch(() => {
-            // 如果侧边栏先于内容脚本加载，可能会失败，忽略错误
-            return null;
-          });
+        if (tab) {
+          // 更新当前URL
+          const newUrl = tab.url || '';
+          setCurrentUrl(newUrl);
           
-          // 如果成功获取到内容，更新状态
-          if (pageData) {
-            setContent(pageData.text || pageData.html || '');
+          // 加载新页面的聊天记录
+          const newHistory = ChatStorage.getChatHistory(newUrl);
+          setChatHistory(newHistory);
+          
+          // 向当前标签页的内容脚本发送消息，请求内容
+          if (tab.id) {
+            const pageData = await chrome.tabs.sendMessage(tab.id, {
+              type: 'REQUEST_CONTENT'
+            }).catch(() => {
+              // 如果侧边栏先于内容脚本加载，可能会失败，忽略错误
+              return null;
+            });
+            
+            // 如果成功获取到内容，更新状态
+            if (pageData) {
+              setContent(pageData.text || pageData.html || '');
+            }
           }
         }
       } catch (error) {
@@ -335,7 +377,7 @@ ${sentimentShow}\n\n`;
       const data = await response.json();
 
       // 4. 更新回复
-      setChatHistory((prev: any[]) => {
+      setChatHistory((prev: ChatMessage[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
@@ -345,7 +387,7 @@ ${sentimentShow}\n\n`;
 
     } catch (error: any) {
       console.error("对话失败:", error);
-      setChatHistory((prev: any[]) => {
+      setChatHistory((prev: ChatMessage[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
@@ -736,13 +778,8 @@ ${sentimentShow}\n\n`;
         {/* AI对话界面按钮 */}
         <button 
           className={`nav-button ${view === 'chat' ? 'active' : ''}`}
-          onClick={() => {
-            if (structuredData) {
-              setView('chat');
-            }
-          }}
-          disabled={!structuredData}
-          title={structuredData ? "AI对话界面" : "请先分析内容"}
+          onClick={() => setView('chat')}
+          title="AI对话界面"
         >
           <MessageSquare size={20} />
         </button>
