@@ -70,6 +70,56 @@ function SidePanel() {
   }, []);
 
   // =================================================================================
+  // 监听标签页切换事件，当切换标签页时，获取当前页面内容
+  // =================================================================================
+  useEffect(() => {
+    // 标签页切换时触发
+    const handleTabChange = async () => {
+      try {
+        // 获取当前活动标签页
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab && tab.id) {
+          // 向当前标签页的内容脚本发送消息，请求内容
+          const pageData = await chrome.tabs.sendMessage(tab.id, {
+            type: 'REQUEST_CONTENT'
+          }).catch(() => {
+            // 如果侧边栏先于内容脚本加载，可能会失败，忽略错误
+            return null;
+          });
+          
+          // 如果成功获取到内容，更新状态
+          if (pageData) {
+            setContent(pageData.text || pageData.html || '');
+          }
+        }
+      } catch (error) {
+        console.error('标签页切换监听错误:', error);
+      }
+    };
+
+    // 监听标签页激活事件
+    chrome.tabs.onActivated.addListener(handleTabChange);
+    // 监听标签页更新事件（如页面加载完成）
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (changeInfo.status === 'complete') {
+        // 检查更新的标签页是否是当前活动标签页
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].id === tabId) {
+            handleTabChange();
+          }
+        });
+      }
+    });
+
+    // 组件加载时，也获取一次当前页面内容
+    handleTabChange();
+
+    return () => {
+      chrome.tabs.onActivated.removeListener(handleTabChange);
+    };
+  }, []);
+
+  // =================================================================================
   //  组件加载时，向后端请求模版列表
   // =================================================================================
   useEffect(() => {
@@ -246,40 +296,46 @@ ${sentimentShow}\n\n`;
   }; */
 
 // =================================================================================
-  //  接口区域 4：完整的对话交互模块（胡）
+  //  接口区域 4：完整的对话交互模块 
+  // =================================================================================
+// =================================================================================
+  //  修改接口区域 4：对话交互 (带上下文版)
   // =================================================================================
   const handleSend = async () => {
-    // 1. 校验输入
     if (!userNote.trim()) return;
     
-    // 2. 立即更新 UI：把用户的消息先显示出来
+    // 1. UI 更新
     const currentMsg = userNote;
     const newHistory = [...chatHistory, { role: 'user', text: currentMsg }];
     setChatHistory(newHistory);
-    setUserNote(''); // 清空输入框
+    setUserNote('');
     
-    // 3. 显示一个 "AI 正在输入..." 的临时占位符
+    // 2. Loading
     const loadingMsg = { role: 'ai', text: 'Thinking...', isLoading: true };
     setChatHistory([...newHistory, loadingMsg]);
 
     try {
-      console.log('💬 发送对话请求:', { message: currentMsg, model: selectedModel.id });
+      // 修改：准备上下文数据
+      // 如果有结构化结果就用结构化的，没有就用原始文本
+      const contextData = structuredData || content; 
 
-      // 4. 发起真实请求
+      console.log('💬 发送对话请求:', { message: currentMsg, hasContext: !!contextData });
+
+      // 3. 发起请求 (带上 context)
       const response = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: currentMsg,
-          model: selectedModel.id
+          model: selectedModel.id,
+          context: contextData //  把这个发给后端
         })
       });
 
       const data = await response.json();
 
-      // 5. 请求成功，用真实回复替换掉 "Thinking..."
-      setChatHistory(prev => {
-        // 移除最后一个 (Loading) 消息
+      // 4. 更新回复
+      setChatHistory((prev: any[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
@@ -287,14 +343,13 @@ ${sentimentShow}\n\n`;
         }];
       });
 
-    } catch (error:any) {
+    } catch (error: any) {
       console.error("对话失败:", error);
-      // 6. 失败处理
-      setChatHistory(prev => {
+      setChatHistory((prev: any[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
-          text: `❌ 发送失败: ${error.message} (请检查后端是否开启)` 
+          text: `❌ 发送失败: ${error.message}` 
         }];
       });
     }

@@ -97,49 +97,64 @@ export async function processContent(htmlContent: string, templateId: string, sy
   }
 }
 
-/**
- * 纯对话模式   
- * 不强制 JSON，支持自由文本回复
- */
 
-export async function processChat(userMessage: string, modelId: string = 'deepseek-r1') {
+ /**
+ * 修改纯对话模式 (Chat Mode) - 支持上下文记忆
+ * @param userMessage 用户的问题
+ * @param modelId 模型ID
+ * @param context 上下文数据 (可能是字符串或JSON对象)
+ */
+export async function processChat(userMessage: string, modelId: string = 'deepseek-r1', context?: any) {
   const config = CONFIGS[modelId] || CONFIGS['deepseek-r1'];
   const currentKey = process.env[config.envKey];
 
   if (!currentKey) {
-    return "❌ 配置错误: 未找到 API Key，请检查服务器 .env 文件。";
+    return "❌ 配置错误: 未找到 API Key。";
   }
 
   const client = new OpenAI({
     baseURL: config.baseURL,
     apiKey: currentKey,
-    dangerouslyAllowBrowser: true
+    dangerouslyAllowBrowser: true,
+    defaultHeaders: {
+      "HTTP-Referer": "https://github.com/SmartClipper", 
+    }
   });
 
-  console.log(`💬 [Chat] 收到消息: ${userMessage.substring(0, 20)}... 使用模型: ${config.model}`);
+  // 构建消息列表
+  const messages: any[] = [
+    { role: "system", content: "你是一个乐于助人的 AI 助手。" }
+  ];
+
+  // 如果有上下文，把它塞给 AI
+  if (context) {
+    const contextStr = typeof context === 'string' ? context : JSON.stringify(context, null, 2);
+    messages.push({
+      role: "system", 
+      content: `【当前上下文信息】\n用户正在浏览或讨论以下内容，请基于此回答用户的问题：\n\n${contextStr.substring(0, 10000)}` // 限制长度防报错
+    });
+  }
+
+  // 最后放入用户的问题
+  messages.push({ role: "user", content: userMessage });
+
+  console.log(`💬 [Chat] 调用模型: ${config.model}, 上下文长度: ${context ? JSON.stringify(context).length : 0}`);
 
   try {
     const completion = await client.chat.completions.create({
       model: config.model,
-      messages: [
-        // 这里的 Prompt 设定为通用助手，而不是 JSON 提取机器
-        { role: "system", content: "你是一个乐于助人的 AI 助手。请根据用户需求回答用户的问题。" },
-        { role: "user", content: userMessage }
-      ],
-      // ❌ 注意：这里千万不能加 response_format: { type: "json_object" }
-      temperature: 0.7, // 稍微高一点，让对话更自然
+      messages: messages,
+      temperature: 0.7,
     });
 
     const rawContent = completion.choices[0].message.content || "（无回复）";
-    
-    // 依然清洗掉 R1 的思考过程，只保留结论
+    // 清洗 R1 思考过程
     const cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     
     return cleanContent;
 
   } catch (error: any) {
     console.error("Chat Error:", error);
-    return `❌ 对话请求失败: ${error.message}`;
+    return `❌ 对话失败: ${error.message}`;
   }
 }
- 
