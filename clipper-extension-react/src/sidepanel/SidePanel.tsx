@@ -4,7 +4,7 @@ import rehypeRaw from 'rehype-raw';
 import {
   FileText, Table, CheckSquare, Sparkles, Bot,
   Star, Send, MessageSquare, ChevronDown, Check, Zap,
-  Brain ,Globe,
+  Brain ,Globe, PlusCircle, History,
 
  CloudUpload, // 🟢 新增：用于导出按钮的图标
   CheckCircle, // 🟢 新增：用于成功状态
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
-import type { ChatMessage } from '../utils/chatStorage';
+import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import './SidePanel.css';
 
 // --- 1. 定义模型列表 ---
@@ -55,6 +55,10 @@ function SidePanel() {
   const [userNote, setUserNote] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentUrl, setCurrentUrl] = useState<string>('');
+  // 对话管理
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [showConversations, setShowConversations] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -80,8 +84,21 @@ function SidePanel() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab && tab.url) {
         setCurrentUrl(tab.url);
-        const history = ChatStorage.getChatHistory(tab.url);
-        setChatHistory(history);
+        // 加载所有对话
+        const convos = ChatStorage.getConversationList(tab.url);
+        setConversations(convos);
+        
+        // 如果有对话，选择第一个
+        if (convos.length > 0) {
+          setCurrentConversationId(convos[0].id);
+          setChatHistory(convos[0].messages);
+        } else {
+          // 创建新对话
+          const newConvo = ChatStorage.createConversation(tab.url);
+          setConversations([newConvo]);
+          setCurrentConversationId(newConvo.id);
+          setChatHistory([]);
+        }
       }
     };
     loadInitialData();
@@ -91,10 +108,12 @@ function SidePanel() {
   // 聊天记录更新时自动保存
   // =================================================================================
   useEffect(() => {
-    if (currentUrl && chatHistory.length > 0) {
-      ChatStorage.saveChatHistory(currentUrl, chatHistory);
+    if (currentUrl && currentConversationId) {
+      ChatStorage.updateConversationMessages(currentUrl, currentConversationId, chatHistory);
+      // 更新对话列表
+      setConversations(ChatStorage.getConversationList(currentUrl));
     }
-  }, [chatHistory, currentUrl]);
+  }, [chatHistory, currentUrl, currentConversationId]);
 
   // =================================================================================
   // 监听标签页切换事件，当切换标签页时，获取当前页面内容和聊天记录
@@ -104,8 +123,8 @@ function SidePanel() {
     const handleTabChange = async () => {
       try {
         // 先保存当前页面的聊天记录
-        if (currentUrl) {
-          ChatStorage.saveChatHistory(currentUrl, chatHistory);
+        if (currentUrl && currentConversationId) {
+          ChatStorage.updateConversationMessages(currentUrl, currentConversationId, chatHistory);
         }
         
         // 获取当前活动标签页
@@ -115,9 +134,21 @@ function SidePanel() {
           const newUrl = tab.url || '';
           setCurrentUrl(newUrl);
           
-          // 加载新页面的聊天记录
-          const newHistory = ChatStorage.getChatHistory(newUrl);
-          setChatHistory(newHistory);
+          // 加载新页面的对话列表
+          const newConversations = ChatStorage.getConversationList(newUrl);
+          setConversations(newConversations);
+          
+          // 如果有对话，选择第一个
+          if (newConversations.length > 0) {
+            setCurrentConversationId(newConversations[0].id);
+            setChatHistory(newConversations[0].messages);
+          } else {
+            // 创建新对话
+            const newConvo = ChatStorage.createConversation(newUrl);
+            setConversations([newConvo]);
+            setCurrentConversationId(newConvo.id);
+            setChatHistory([]);
+          }
           
           // 向当前标签页的内容脚本发送消息，请求内容
           if (tab.id) {
@@ -666,7 +697,43 @@ ${sentimentShow}\n\n`;
     </div>
   );
 
-  // --- 视图 2: 聊天界面 ---
+  // --- 视图 2: 对话列表 ---
+  const renderConversationsView = () => (
+    <div className="conversations-container">
+      <div className="conversations-header">
+        <h3>聊天记录</h3>
+        <button 
+          className="new-conversation-btn"
+          onClick={() => handleNewConversation()}
+        >
+          <PlusCircle size={18} />
+        </button>
+      </div>
+      <div className="conversations-list">
+        {conversations.map((conversation) => (
+          <div
+            key={conversation.id}
+            className={`conversation-item ${currentConversationId === conversation.id ? 'active' : ''}`}
+            onClick={() => handleSwitchConversation(conversation.id)}
+          >
+            <div className="conversation-title">
+              {conversation.title || '新对话'}
+            </div>
+            <div className="conversation-preview">
+              {conversation && conversation.messages && conversation.messages.length > 0 ? 
+                (conversation.messages[conversation.messages.length - 1].text.substring(0, 50) + '...') : 
+                '暂无消息'}
+            </div>
+            <div className="conversation-time">
+              {new Date(conversation.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // --- 视图 3: 聊天界面 ---
   const renderChatView = () => (
     <div className="container" style={{ background: '#f8fafc' }}>
       <div className="rating-section">
@@ -680,7 +747,7 @@ ${sentimentShow}\n\n`;
 
       <div className="section-title" style={{marginTop:'20px'}}>对话与感想</div>
       <div className="chat-container">
-        {chatHistory.map((msg, idx) => (
+        {chatHistory && chatHistory.map((msg, idx) => (
           <div key={idx} className={`message ${msg.role}`}>
             {msg.role === 'ai' ? (
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>
@@ -759,6 +826,31 @@ ${sentimentShow}\n\n`;
 
 
 
+  // 新建对话
+  const handleNewConversation = () => {
+    if (!currentUrl) return;
+    const newConvo = ChatStorage.createConversation(currentUrl);
+    setConversations(ChatStorage.getConversationList(currentUrl));
+    setCurrentConversationId(newConvo.id);
+    setChatHistory([]);
+    setRating(0);
+    setShowConversations(false);
+    setView('chat'); // 确保显示聊天视图
+    setShowSettings(false); // 确保关闭设置页面
+  };
+
+  // 切换对话
+  const handleSwitchConversation = (conversationId: string) => {
+    setCurrentConversationId(conversationId);
+    const conversation = ChatStorage.getConversation(currentUrl, conversationId);
+    if (conversation) {
+      setChatHistory(conversation.messages);
+    }
+    setShowConversations(false);
+    setView('chat'); // 确保显示聊天视图
+    setShowSettings(false); // 确保关闭设置页面
+  };
+
   // 右侧导航按钮组件
   const renderRightNavigation = () => (
     <div className="right-navigation">
@@ -768,8 +860,12 @@ ${sentimentShow}\n\n`;
 
         {/* 剪藏页面按钮 */}
         <button 
-          className={`nav-button ${view === 'clipper' ? 'active' : ''}`}
-          onClick={() => setView('clipper')}
+          className={`nav-button ${view === 'clipper' && !showConversations && !showSettings ? 'active' : ''}`}
+          onClick={() => {
+            setView('clipper');
+            setShowConversations(false);
+            setShowSettings(false);
+          }}
           title="剪藏页面"
         >
           <FileText size={20} />
@@ -777,11 +873,27 @@ ${sentimentShow}\n\n`;
         
         {/* AI对话界面按钮 */}
         <button 
-          className={`nav-button ${view === 'chat' ? 'active' : ''}`}
-          onClick={() => setView('chat')}
+          className={`nav-button ${view === 'chat' && !showConversations && !showSettings ? 'active' : ''}`}
+          onClick={() => {
+            setView('chat');
+            setShowConversations(false);
+            setShowSettings(false);
+          }}
           title="AI对话界面"
         >
           <MessageSquare size={20} />
+        </button>
+        
+        {/* 对话列表按钮 */}
+        <button 
+          className={`nav-button ${showConversations ? 'active' : ''}`}
+          onClick={() => {
+            setShowConversations(!showConversations);
+            setShowSettings(false);
+          }}
+          title="聊天记录"
+        >
+          <History size={20} />
         </button>
       </div>
       
@@ -806,7 +918,10 @@ ${sentimentShow}\n\n`;
        {/* 设置按钮 */}
         <button 
           className={`nav-button ${showSettings ? 'active' : ''}`} // 🟢 [修改] 如果正在设置页，按钮高亮
-          onClick={() => setShowSettings(true)} // 🟢 [修改] 点击后，将状态改为 true，显示设置页
+          onClick={() => {
+            setShowSettings(!showSettings);
+            setShowConversations(false);
+          }} // 🟢 [修改] 点击后，将状态改为 true，显示设置页
           title="设置"
         >
           <Settings size={20} />
@@ -867,6 +982,8 @@ ${sentimentShow}\n\n`;
         {/* 🟢 [修改] 页面路由逻辑：设置页优先 */}
         {showSettings ? (
           renderSettings()  // --- 场景 A: 显示设置页 ---
+        ) : showConversations ? (
+          renderConversationsView() // --- 场景 C: 显示对话列表 ---
         ) : (
           // --- 场景 B: 显示正常功能页 (Header + 内容) ---
           <>
@@ -875,6 +992,17 @@ ${sentimentShow}\n\n`;
                 {view === 'chat' ? <MessageSquare size={20} color="#2563eb"/> : <Bot size={20} color="#2563eb" />}
                 <span>{view === 'chat' ? 'AI 助手' : 'AI Clipper'}</span>
               </div>
+              {view === 'chat' && (
+                <div className="chat-actions">
+                  <button 
+                    className="new-conversation-btn"
+                    onClick={handleNewConversation}
+                    title="新建对话"
+                  >
+                    <PlusCircle size={16} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 原有的视图判断逻辑 */}
