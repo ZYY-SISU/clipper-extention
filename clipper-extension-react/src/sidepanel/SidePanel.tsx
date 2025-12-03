@@ -70,6 +70,56 @@ function SidePanel() {
   }, []);
 
   // =================================================================================
+  // 监听标签页切换事件，当切换标签页时，获取当前页面内容
+  // =================================================================================
+  useEffect(() => {
+    // 标签页切换时触发
+    const handleTabChange = async () => {
+      try {
+        // 获取当前活动标签页
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab && tab.id) {
+          // 向当前标签页的内容脚本发送消息，请求内容
+          const pageData = await chrome.tabs.sendMessage(tab.id, {
+            type: 'REQUEST_CONTENT'
+          }).catch(() => {
+            // 如果侧边栏先于内容脚本加载，可能会失败，忽略错误
+            return null;
+          });
+          
+          // 如果成功获取到内容，更新状态
+          if (pageData) {
+            setContent(pageData.text || pageData.html || '');
+          }
+        }
+      } catch (error) {
+        console.error('标签页切换监听错误:', error);
+      }
+    };
+
+    // 监听标签页激活事件
+    chrome.tabs.onActivated.addListener(handleTabChange);
+    // 监听标签页更新事件（如页面加载完成）
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (changeInfo.status === 'complete') {
+        // 检查更新的标签页是否是当前活动标签页
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].id === tabId) {
+            handleTabChange();
+          }
+        });
+      }
+    });
+
+    // 组件加载时，也获取一次当前页面内容
+    handleTabChange();
+
+    return () => {
+      chrome.tabs.onActivated.removeListener(handleTabChange);
+    };
+  }, []);
+
+  // =================================================================================
   //  组件加载时，向后端请求模版列表
   // =================================================================================
   useEffect(() => {

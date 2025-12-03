@@ -600,6 +600,18 @@ function init() {
   console.log('[SmartClipper] Content script loaded');
 }
 
+// ==================【消息监听】========================
+// 监听来自后台或侧边栏的消息
+chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
+  if (request.type === 'REQUEST_CONTENT') {
+    // 当收到请求内容的消息时，提取页面内容并返回
+    const pageData = extractUniversalContent();
+    sendResponse(pageData);
+    return true; // 保持消息通道开放
+  }
+  return false;
+});
+
 // ==================【启动应用】========================
 // 初始化
 if (document.readyState === 'loading') {
