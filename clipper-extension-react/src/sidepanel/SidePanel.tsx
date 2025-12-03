@@ -296,40 +296,46 @@ ${sentimentShow}\n\n`;
   }; */
 
 // =================================================================================
-  //  接口区域 4：完整的对话交互模块（胡）
+  //  接口区域 4：完整的对话交互模块 
+  // =================================================================================
+// =================================================================================
+  //  修改接口区域 4：对话交互 (带上下文版)
   // =================================================================================
   const handleSend = async () => {
-    // 1. 校验输入
     if (!userNote.trim()) return;
     
-    // 2. 立即更新 UI：把用户的消息先显示出来
+    // 1. UI 更新
     const currentMsg = userNote;
     const newHistory = [...chatHistory, { role: 'user', text: currentMsg }];
     setChatHistory(newHistory);
-    setUserNote(''); // 清空输入框
+    setUserNote('');
     
-    // 3. 显示一个 "AI 正在输入..." 的临时占位符
+    // 2. Loading
     const loadingMsg = { role: 'ai', text: 'Thinking...', isLoading: true };
     setChatHistory([...newHistory, loadingMsg]);
 
     try {
-      console.log('💬 发送对话请求:', { message: currentMsg, model: selectedModel.id });
+      // 修改：准备上下文数据
+      // 如果有结构化结果就用结构化的，没有就用原始文本
+      const contextData = structuredData || content; 
 
-      // 4. 发起真实请求
+      console.log('💬 发送对话请求:', { message: currentMsg, hasContext: !!contextData });
+
+      // 3. 发起请求 (带上 context)
       const response = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: currentMsg,
-          model: selectedModel.id
+          model: selectedModel.id,
+          context: contextData //  把这个发给后端
         })
       });
 
       const data = await response.json();
 
-      // 5. 请求成功，用真实回复替换掉 "Thinking..."
-      setChatHistory(prev => {
-        // 移除最后一个 (Loading) 消息
+      // 4. 更新回复
+      setChatHistory((prev: any[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
@@ -337,14 +343,13 @@ ${sentimentShow}\n\n`;
         }];
       });
 
-    } catch (error:any) {
+    } catch (error: any) {
       console.error("对话失败:", error);
-      // 6. 失败处理
-      setChatHistory(prev => {
+      setChatHistory((prev: any[]) => {
         const historyWithoutLoading = prev.filter(msg => !msg.isLoading);
         return [...historyWithoutLoading, { 
           role: 'ai', 
-          text: `❌ 发送失败: ${error.message} (请检查后端是否开启)` 
+          text: `❌ 发送失败: ${error.message}` 
         }];
       });
     }
