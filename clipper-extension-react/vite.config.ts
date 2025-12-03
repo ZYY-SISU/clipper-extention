@@ -59,5 +59,33 @@ export default defineConfig({
   ],
   server: {
     port: 5174,
+  },
+  // 优化配置，解决依赖解析问题
+  optimizeDeps: {
+    include: ['react-markdown', 'rehype-raw'],
+  },
+  // 优化配置，解决大块代码警告
+  build: {
+    // 增加chunk大小警告限制
+    chunkSizeWarningLimit: 1000, // 默认是500
+    // 手动代码分割
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // 将react-markdown和相关插件单独打包
+          if (id.includes('react-markdown') || id.includes('rehype-raw')) {
+            return 'markdown';
+          }
+          // 将react相关库分开打包
+          if (id.includes('react') || id.includes('react-dom')) {
+            return 'react-vendor';
+          }
+          // 将lucide图标库分开打包
+          if (id.includes('lucide-react')) {
+            return 'lucide';
+          }
+        },
+      },
+    },
   }
 })
