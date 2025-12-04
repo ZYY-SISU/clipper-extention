@@ -25,6 +25,7 @@ export type requestType =
  | {type: 'ANALYZE', payload: {content: string, template: string, model: string}}
  | {type: 'SAVE_TO_FEISHU', payload: {content: string, template: string, model: string, url: string}}
  | {type: 'OPEN_SIDEPANEL'}
+ | { type: 'UPDATE_STRUCTURED_DATA';payload: any }
 
 
 // Chrome 发送方信息（对齐 chrome.runtime.MessageSender 的常用字段，全部可选，避免类型报错）
