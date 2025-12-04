@@ -26,7 +26,7 @@ export const DEFAULT_TEMPLATES: TemplateConfig[] = [
   },
   {
     id:'video-summary',
-    name:'视频摘要',
+    name:'视频剪藏',
     iconType:'Video',
     description: '提取视频UP主、三连数据及摘要',
     systemPrompt: `你是一个视频数据分析助手。

@@ -112,14 +112,15 @@ async function handleMessage(request: requestType, _: senderType, sendResponse: 
       })
       return true;
     // 【AI 分析内容】
-    case 'ANALYZE':
-      handleStructure(request.payload?.content || '', request.payload?.template || '', request.payload?.model || '').then(data => {
-        console.log('【Background】 结果:', data);
-        sendResponse({status: 'success', data})
-      }).catch(error => {
-        sendResponse({status:'error', message: error.message})
-      })
-      return true;
+    // case 'ANALYZE':
+    //   handleStructure(request.payload?.content || '', request.payload?.template || '', request.payload?.model || '').then(data => {
+    //     console.log('【Background】 结果:', data);
+    //     sendResponse({status: 'success', data})
+    //   }).catch(error => {
+    //     sendResponse({status:'error', message: error.message})
+    //   })
+    //   return true;
+    
     
     // 【保存到飞书】
     case 'SAVE_TO_FEISHU':
@@ -128,6 +129,12 @@ async function handleMessage(request: requestType, _: senderType, sendResponse: 
       }).catch(error => {
         sendResponse({status:'error', message: error.message})
       })
+      return true;
+       // 🟢 [新增] 接收 SidePanel 的结果同步
+    case 'UPDATE_STRUCTURED_DATA':
+      globalState.structuredData = request.payload;
+      console.log('【Background】✅ 已更新结构化数据:', request.payload.title);
+      sendResponse({ status: 'success' });
       return true;
 
     default:

@@ -302,6 +302,14 @@ function SidePanel() {
       // 1. 存下数据 (给飞书用)
       setStructuredData(data); 
 
+      // 🟢 [新增] 同时通知 Background，让它也保存一份（用于多标签页同步）
+    chrome.runtime.sendMessage({
+      type: 'UPDATE_STRUCTURED_DATA',
+      payload: data
+    }).catch(err => {
+      console.warn('⚠️ 通知 Background 失败（不影响使用）:', err);
+    });
+
       setStatus('ready');
       setView('chat'); 
       
@@ -309,13 +317,11 @@ function SidePanel() {
       let displayText = '';
 
       // 使用Markdown卡片和分隔线创建清晰的视觉层次
-      displayText += `# AI内容分析结果
-
-`;
+      displayText += `# AI内容分析结果`;
 
       // (1) 标题 - 使用一级标题强调
       displayText += `## 标题
-**${data.title || '未提取到标题'}**\n\n`;
+      **${data.title || '未提取到标题'}**\n\n`;
       
       // (2) 摘要 - 使用代码块样式美化
       displayText += `## 摘要
@@ -604,7 +610,9 @@ ${sentimentShow}\n\n`;
       // 🟢 [关键逻辑] 根据当前选中的模版 ID，去配置里找对应的 Table ID
       // selectedTemplateId 可能是 'summary' 或 'bilibili'
       // 如果找不到，就用 'default' 或 'summary' 兜底
-      const targetTableId = userConfig.tables[selectedTemplateId || 'summary'] || userConfig.tables['default'];
+      const currentTemplate = selectedTemplateId || 'summary';
+      const targetTableId = userConfig.tables[currentTemplate || 'summary'] || userConfig.tables['default'];
+      console.log(`正在导出... 模板: ${currentTemplate}, 表格ID: ${targetTableId}`);
       if (!targetTableId) throw new Error("未找到该模版对应的飞书数据表，请尝试重置配置。");
       const payload = {
         ...structuredData,
@@ -626,7 +634,8 @@ ${sentimentShow}\n\n`;
       // 4. 成功反馈
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);// 3秒后重置状态，允许再次保存
-      alert("✅ 成功导出到你的飞书表格！");
+      // alert("✅ 成功导出到你的飞书表格！");
+      alert(`✅ 成功存入【${currentTemplate === 'bilibili' ? '视频剪藏' : '智能摘要'}】表！`);
 
     } catch (error) {
       console.error('导出失败:', error);
@@ -782,9 +791,9 @@ ${sentimentShow}\n\n`;
     </div>
   );
 
-  // 🟢 [新增] 这是一个全新的组件，用来把数据画成漂亮的卡片,用来渲染前端，暂时还没用上
+ // 🟢 [修改] 结果卡片组件
   const ResultCard = ({ data }: { data: any }) => {
-    // 1. 计算情感颜色
+    // 情感判断
     const sKey = (data.sentiment || '').includes('pos') ? 'positive' : 
                  (data.sentiment || '').includes('neg') ? 'negative' : 'neutral';
     const icons: any = { positive: Smile, negative: Frown, neutral: Meh };
@@ -793,11 +802,11 @@ ${sentimentShow}\n\n`;
 
     return (
       <div className="result-card">
-        {/* 标题区 */}
+        {/* 1. 头部：标题 + UP主 */}
         <div className="rc-header">
-          <div style={{flex:1}}>
+          <div style={{flex: 1}}>
             <div className="rc-title">{data.title}</div>
-            {/* 如果有 UP主，显示出来 */}
+            {/* 🟢 如果有 UP主，显示出来 */}
             {data.up_name && (
                <div style={{display:'flex', alignItems:'center', gap:'4px', fontSize:'12px', color:'#64748b', marginTop:'4px'}}>
                   <UserIcon size={12}/> <span>{data.up_name}</span>
@@ -810,40 +819,58 @@ ${sentimentShow}\n\n`;
           </div>
         </div>
 
-        {/* 🟢 视频数据区 (只有B站视频才有这些数字) */}
+        {/* 🟢 2. 视频数据栏 (核心修复：只要有播放量就显示) */}
         {data.play_count && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', 
-            background: '#f1f5f9', padding: '8px 4px', borderRadius: '8px', marginTop: '10px',
-            fontSize: '11px', color: '#475569', textAlign: 'center'
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr 1fr 1fr', 
+            gap: '4px', 
+            background: '#f8fafc', 
+            border: '1px solid #e2e8f0',
+            padding: '8px 4px', 
+            borderRadius: '8px', 
+            marginTop: '12px',
+            marginBottom: '4px'
           }}>
-             <div title="播放"><span style={{fontWeight:'bold', display:'block'}}>{data.play_count}</span>播放</div>
-             <div title="点赞"><span style={{fontWeight:'bold', display:'block'}}>{data.like_count}</span>点赞</div>
-             <div title="投币"><span style={{fontWeight:'bold', display:'block'}}>{data.coin_count}</span>投币</div>
-             <div title="收藏"><span style={{fontWeight:'bold', display:'block'}}>{data.collect_count}</span>收藏</div>
+             <div className="video-stat-item" title="播放">
+               <PlayCircle size={14} color="#3b82f6"/> 
+               <span style={{fontSize:'11px', fontWeight:'600', color:'#334155'}}>{data.play_count}</span>
+             </div>
+             <div className="video-stat-item" title="点赞">
+               <ThumbsUp size={14} color="#ef4444"/> 
+               <span style={{fontSize:'11px', fontWeight:'600', color:'#334155'}}>{data.like_count}</span>
+             </div>
+             <div className="video-stat-item" title="投币">
+               <Coins size={14} color="#eab308"/> 
+               <span style={{fontSize:'11px', fontWeight:'600', color:'#334155'}}>{data.coin_count}</span>
+             </div>
+             <div className="video-stat-item" title="收藏">
+               <Bookmark size={14} color="#10b981"/> 
+               <span style={{fontSize:'11px', fontWeight:'600', color:'#334155'}}>{data.collect_count}</span>
+             </div>
           </div>
         )}
 
-        {/* 摘要区 */}
-        <div className="rc-summary" style={{marginTop: '12px'}}>
+        {/* 3. 摘要 */}
+        <div className="rc-summary" style={{marginTop: '8px'}}>
           <Quote size={14} style={{marginRight:6, opacity:0.5}}/>
           {data.summary}
         </div>
 
-        {/* 标签区 */}
+        {/* 4. 标签 */}
         <div className="rc-tags" style={{marginTop: '12px'}}>
           {(data.tags || []).map((t:string, i:number) => (
             <div key={i} className="rc-tag"># {t}</div>
           ))}
         </div>
 
-        {/* 底部按钮区 (直接复用你之前的逻辑) */}
+        {/* 5. 底部按钮 */}
         <div className="rc-footer" style={{marginTop:'12px', paddingTop:'12px', borderTop:'1px dashed #e2e8f0'}}>
             <button 
               className={`nav-button feishu-export-btn ${saveStatus === 'success' ? 'success' : ''}`}
               onClick={handleExportToFeishu}
               disabled={isSaving || saveStatus === 'success'}
-              style={{width: '100%', justifyContent: 'center'}} // 样式微调
+              style={{width: '100%', justifyContent: 'center', height: '36px', borderRadius:'8px'}} 
             >
               {isSaving ? <Loader2 size={16} className="spin"/> : saveStatus==='success'?<CheckCircle size={16}/>:<CloudUpload size={16}/>}
               <span style={{marginLeft:6}}>{saveStatus==='success'?'已同步':'存入飞书'}</span>
