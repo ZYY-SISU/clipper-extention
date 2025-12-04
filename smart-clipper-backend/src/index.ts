@@ -116,19 +116,22 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
 
 
 //  新增：对话专用接口
+//  修改AI 对话接口 (Chat) - 来支持剪藏内容的上下文
 app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { message, model } = req.body;
+    //  接收 context 参数
+    const { message, model, context } = req.body;
 
     if (!message) {
       res.status(400).json({ error: '消息内容不能为空' });
       return;
     }
 
-    // 调用刚才写的纯对话函数
-    const reply = await processChat(message, model);
+    console.log(`💬 收到对话请求: ${message.substring(0, 10)}... (含上下文: ${!!context})`);
     
-    // 直接返回字符串结果
+    // 把 context 传给处理函数
+    const reply = await processChat(message, model, context);
+    
     res.json({ reply });
 
   } catch (error: any) {
