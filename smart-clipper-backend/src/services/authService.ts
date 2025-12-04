@@ -1,3 +1,5 @@
+//登录授权服务
+
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { AuthResult } from '../types'; // 🟢 引入类型

@@ -10,7 +10,9 @@ import {
   CheckCircle, // 🟢 新增：用于成功状态
   Loader2,      // 🟢 新增：用于加载状态
   User,         // 🟢 新增：用于个人用户图标
-  Settings      // 🟢 新增：用于设置图标
+  Settings ,     // 🟢 新增：用于设置图标
+  Video
+
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType,UserConfig } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
@@ -228,7 +230,8 @@ function SidePanel() {
         setTemplates([
           { id: 'summary', name: '智能摘要', iconType: 'text' },
           { id: 'table', name: '表格提取', iconType: 'table' },
-          { id: 'checklist', name: '清单整理', iconType: 'check' }
+          { id: 'checklist', name: '清单整理', iconType: 'check' },
+          { id: 'video-summary', name: '视频摘要', iconType: 'Video' }
         ]);
       } finally {
         setIsLoadingTemplates(false); // 无论成功失败，都结束加载状态
@@ -245,6 +248,7 @@ function SidePanel() {
       case 'table': return Table;
       case 'check': return CheckSquare;
       case 'globe': return Globe; // 适配翻译图标
+      case 'Video': return Video;
       default: return FileText;
     }
   };
@@ -549,8 +553,9 @@ ${sentimentShow}\n\n`;
   };
 
 // =================================================================================
-  //  配置飞书多维表格，辅助工具：从飞书 URL 中提取 AppToken 和 TableId
+  //  配置飞书多维表格，辅助工具：从飞书 URL 中提取 AppToken 和 TableId，，，，
   // 链接示例：https://xxx.feishu.cn/base/bascnABCDEF123?table=tblXYZ789
+  //废弃
   // =================================================================================
   
   const parseFeishuUrl = (url: string) => {
@@ -594,12 +599,18 @@ ${sentimentShow}\n\n`;
     setIsSaving(true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // 🟢 [关键逻辑] 根据当前选中的模版 ID，去配置里找对应的 Table ID
+      // selectedTemplateId 可能是 'summary' 或 'bilibili'
+      // 如果找不到，就用 'default' 或 'summary' 兜底
+      const targetTableId = userConfig.tables[selectedTemplateId || 'summary'] || userConfig.tables['default'];
+      if (!targetTableId) throw new Error("未找到该模版对应的飞书数据表，请尝试重置配置。");
       const payload = {
         ...structuredData,
         url: tab.url || '',
         userAccessToken: userInfo.token,
         appToken: userConfig.appToken, // 🟢 直接从自动配置里拿
-        tableId: userConfig.tableId
+        tableId: targetTableId
       };
       // 3. 发送给后端
       const res = await fetch('http://localhost:3000/api/save', {

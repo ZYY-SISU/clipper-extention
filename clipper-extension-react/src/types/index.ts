@@ -103,7 +103,13 @@ export interface LinkData {
   text: string;
 }
 
+// export interface UserConfig {
+//     appToken: string;
+//     tableId: string;
+//   }
+
+  // 🟢  新的配置结构：包含一个 tables 字典 用来决定保存到哪个表
 export interface UserConfig {
     appToken: string;
-    tableId: string;
+    tables: { [key: string]: string }; // key是模版ID(summary/bilibili), value是tableId
   }

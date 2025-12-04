@@ -4,7 +4,7 @@
 export interface TemplateConfig {
   id: string;
   name: string;
-  iconType: 'text' | 'table' | 'check' | 'globe'; 
+  iconType: 'text' | 'table' | 'check' | 'globe'| 'Video'; // 图标类型
   description: string;
   systemPrompt: string; // 🌟 核心：提示词存在这里
   isCustom?: boolean;   // 标记是否为用户自定义
