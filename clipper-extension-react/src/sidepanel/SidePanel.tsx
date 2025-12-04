@@ -10,7 +10,10 @@ import {
   CheckCircle, // 🟢 新增：用于成功状态
   Loader2,      // 🟢 新增：用于加载状态
   User,         // 🟢 新增：用于个人用户图标
-  Settings      // 🟢 新增：用于设置图标
+  Settings ,     // 🟢 新增：用于设置图标
+  Video,
+  PlayCircle, ThumbsUp, Coins, Bookmark, User as UserIcon, Quote, Tag, Smile, Frown, Meh// 🟢 [新增] 视频相关图标
+
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType,UserConfig } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
@@ -228,7 +231,8 @@ function SidePanel() {
         setTemplates([
           { id: 'summary', name: '智能摘要', iconType: 'text' },
           { id: 'table', name: '表格提取', iconType: 'table' },
-          { id: 'checklist', name: '清单整理', iconType: 'check' }
+          { id: 'checklist', name: '清单整理', iconType: 'check' },
+          { id: 'video-summary', name: '视频摘要', iconType: 'Video' }
         ]);
       } finally {
         setIsLoadingTemplates(false); // 无论成功失败，都结束加载状态
@@ -245,6 +249,7 @@ function SidePanel() {
       case 'table': return Table;
       case 'check': return CheckSquare;
       case 'globe': return Globe; // 适配翻译图标
+      case 'Video': return Video;
       default: return FileText;
     }
   };
@@ -549,8 +554,9 @@ ${sentimentShow}\n\n`;
   };
 
 // =================================================================================
-  //  配置飞书多维表格，辅助工具：从飞书 URL 中提取 AppToken 和 TableId
+  //  配置飞书多维表格，辅助工具：从飞书 URL 中提取 AppToken 和 TableId，，，，
   // 链接示例：https://xxx.feishu.cn/base/bascnABCDEF123?table=tblXYZ789
+  //废弃
   // =================================================================================
   
   const parseFeishuUrl = (url: string) => {
@@ -594,12 +600,18 @@ ${sentimentShow}\n\n`;
     setIsSaving(true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // 🟢 [关键逻辑] 根据当前选中的模版 ID，去配置里找对应的 Table ID
+      // selectedTemplateId 可能是 'summary' 或 'bilibili'
+      // 如果找不到，就用 'default' 或 'summary' 兜底
+      const targetTableId = userConfig.tables[selectedTemplateId || 'summary'] || userConfig.tables['default'];
+      if (!targetTableId) throw new Error("未找到该模版对应的飞书数据表，请尝试重置配置。");
       const payload = {
         ...structuredData,
         url: tab.url || '',
         userAccessToken: userInfo.token,
         appToken: userConfig.appToken, // 🟢 直接从自动配置里拿
-        tableId: userConfig.tableId
+        tableId: targetTableId
       };
       // 3. 发送给后端
       const res = await fetch('http://localhost:3000/api/save', {
@@ -770,6 +782,77 @@ ${sentimentShow}\n\n`;
     </div>
   );
 
+  // 🟢 [新增] 这是一个全新的组件，用来把数据画成漂亮的卡片,用来渲染前端，暂时还没用上
+  const ResultCard = ({ data }: { data: any }) => {
+    // 1. 计算情感颜色
+    const sKey = (data.sentiment || '').includes('pos') ? 'positive' : 
+                 (data.sentiment || '').includes('neg') ? 'negative' : 'neutral';
+    const icons: any = { positive: Smile, negative: Frown, neutral: Meh };
+    const colors: any = { positive: '#10b981', negative: '#ef4444', neutral: '#64748b' };
+    const SIcon = icons[sKey] || Meh;
+
+    return (
+      <div className="result-card">
+        {/* 标题区 */}
+        <div className="rc-header">
+          <div style={{flex:1}}>
+            <div className="rc-title">{data.title}</div>
+            {/* 如果有 UP主，显示出来 */}
+            {data.up_name && (
+               <div style={{display:'flex', alignItems:'center', gap:'4px', fontSize:'12px', color:'#64748b', marginTop:'4px'}}>
+                  <UserIcon size={12}/> <span>{data.up_name}</span>
+               </div>
+            )}
+          </div>
+          {/* 情感图标 */}
+          <div className="rc-sentiment" style={{ color: colors[sKey], marginLeft:'8px' }}>
+            <SIcon size={16} />
+          </div>
+        </div>
+
+        {/* 🟢 视频数据区 (只有B站视频才有这些数字) */}
+        {data.play_count && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', 
+            background: '#f1f5f9', padding: '8px 4px', borderRadius: '8px', marginTop: '10px',
+            fontSize: '11px', color: '#475569', textAlign: 'center'
+          }}>
+             <div title="播放"><span style={{fontWeight:'bold', display:'block'}}>{data.play_count}</span>播放</div>
+             <div title="点赞"><span style={{fontWeight:'bold', display:'block'}}>{data.like_count}</span>点赞</div>
+             <div title="投币"><span style={{fontWeight:'bold', display:'block'}}>{data.coin_count}</span>投币</div>
+             <div title="收藏"><span style={{fontWeight:'bold', display:'block'}}>{data.collect_count}</span>收藏</div>
+          </div>
+        )}
+
+        {/* 摘要区 */}
+        <div className="rc-summary" style={{marginTop: '12px'}}>
+          <Quote size={14} style={{marginRight:6, opacity:0.5}}/>
+          {data.summary}
+        </div>
+
+        {/* 标签区 */}
+        <div className="rc-tags" style={{marginTop: '12px'}}>
+          {(data.tags || []).map((t:string, i:number) => (
+            <div key={i} className="rc-tag"># {t}</div>
+          ))}
+        </div>
+
+        {/* 底部按钮区 (直接复用你之前的逻辑) */}
+        <div className="rc-footer" style={{marginTop:'12px', paddingTop:'12px', borderTop:'1px dashed #e2e8f0'}}>
+            <button 
+              className={`nav-button feishu-export-btn ${saveStatus === 'success' ? 'success' : ''}`}
+              onClick={handleExportToFeishu}
+              disabled={isSaving || saveStatus === 'success'}
+              style={{width: '100%', justifyContent: 'center'}} // 样式微调
+            >
+              {isSaving ? <Loader2 size={16} className="spin"/> : saveStatus==='success'?<CheckCircle size={16}/>:<CloudUpload size={16}/>}
+              <span style={{marginLeft:6}}>{saveStatus==='success'?'已同步':'存入飞书'}</span>
+            </button>
+        </div>
+      </div>
+    );
+  };
+
   // --- 视图 3: 聊天界面 ---
   const renderChatView = () => (
     <div className="container" style={{ background: '#f8fafc' }}>
@@ -786,6 +869,7 @@ ${sentimentShow}\n\n`;
       <div className="chat-container">
         {chatHistory && chatHistory.map((msg, idx) => (
           <div key={idx} className={`message ${msg.role}`}>
+            
             {msg.role === 'ai' ? (
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                 {msg.text}
@@ -793,6 +877,18 @@ ${sentimentShow}\n\n`;
             ) : (
               msg.text
             )}
+
+            {/* 🟢 [核心修改] 在这里进行判断 */}
+            {/* {msg.data ? (
+              // 情况 A: 如果是 AI 分析结果，显示卡片
+              <ResultCard data={msg.data} />
+            ) : (
+              // 情况 B: 普通聊天消息，显示气泡
+              <div className={`message ${msg.role}`}>
+                {msg.text}
+              </div>
+            )} */}
+
           </div>
         ))}
         <div ref={chatEndRef} />

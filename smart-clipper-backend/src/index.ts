@@ -66,10 +66,12 @@ app.post('/api/login', async (req: Request, res: Response): Promise<void> => {
 
 
 // 👇AI 分析接口
-//  POST 接口，前端会把 { text: "..." } 发过来
+//  POST 接口，前端会把 { text: "..." } 发过
 app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
   try {
    const { content, template, model } = req.body; 
+   console.log("正在使用模型:",model);
+   console.log("正在使用模板:",template);
     
     // 👇👇👇 校验逻辑也要改 👇👇👇
     if (!content) {
@@ -94,13 +96,16 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
 // 1. 获取 AI 原始结果
     const rawResult = await processContent(content, template, targetTemplate.systemPrompt, model);
     
-    // 🟢 2. 核心修改：清洗数据，只保留我们需要的四个金刚
-    // 这里的 || 是为了防止 AI 没返回某个字段导致 undefined
+   // 🟢 [修改] 核心修复：不要手动一个个写字段了，改为“合并模式”
+    // 这样未来不管加什么新字段（比如商品价格、论文作者），都不用改这里代码了
     const cleanResult = {
+      ...rawResult, // 🌟 关键：先把 AI 返回的所有字段都拿过来 (包含 play_count 等)
+      
+      // 下面是对核心字段的“兜底”处理（如果 AI 没返回，给个默认值）
       title: rawResult.title || "无标题",
-      summary: rawResult.summary || "无摘要",
-      sentiment: rawResult.sentiment || "中性",
-      tags: Array.isArray(rawResult.tags) ? rawResult.tags : [] 
+      summary: rawResult.summary || "暂无摘要",
+      sentiment: rawResult.sentiment || "neutral",
+      tags: Array.isArray(rawResult.tags) ? rawResult.tags : []
     };
 
     console.log("处理成功，返回清洗后的结果:", cleanResult);

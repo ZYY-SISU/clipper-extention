@@ -23,5 +23,28 @@ export const DEFAULT_TEMPLATES: TemplateConfig[] = [
     iconType: 'check', 
     description: '提取行动项',
     systemPrompt: '你是一个待办事项整理员。请提取内容为 checkItems 数组，每项包含 text(内容) 和 checked(false)。返回 JSON。'
+  },
+  {
+    id:'video-summary',
+    name:'视频摘要',
+    iconType:'Video',
+    description: '提取视频UP主、三连数据及摘要',
+    systemPrompt: `你是一个视频数据分析助手。
+    请分析用户提供的网页文本（通常来自B站或YouTube），精准提取以下关键指标，并以严格的 JSON 格式返回：
+
+    1. title: 视频标题
+    2. summary: 视频简介或内容摘要 (80字以内)
+    3. up_name: UP主/创作者名字
+    4. play_count: 播放量 (例如 "10万+" 或 "2300")
+    5. like_count: 点赞量
+    6. coin_count: 投币量 (如果没有则返回 "0")
+    7. collect_count: 收藏量 (如果没有则返回 "0")
+    8. tags: 视频标签 (数组，提取3-5个)
+    9. sentiment: 视频或评论区的整体情感氛围 (positive/neutral/negative)
+
+    注意：
+    - 如果找不到某个具体数字，请返回 "0" 或 "N/A"，不要编造。
+    - 只返回 JSON 字符串，不要包含 Markdown 标记。`
   }
+
 ];
