@@ -17,6 +17,16 @@ async function init() {
   // 注册消息监听器
   chrome.runtime.onMessage.addListener(handleMessage)
 
+  // 配置侧边栏行为：点击扩展图标时自动打开侧边栏
+  try {
+    await chrome.sidePanel.setPanelBehavior({
+      openPanelOnActionClick: true
+    });
+    console.log('✅ 侧边栏行为已配置：点击图标自动打开');
+  } catch (error) {
+    console.warn('⚠️ 配置侧边栏行为失败（不影响使用）:', error);
+  }
+
   // 预加载模板列表（不阻塞初始化，静默失败）
   fetchTemplates().catch(err => {
     console.warn('模板列表预加载失败（不影响使用）:', err);
@@ -26,7 +36,7 @@ async function init() {
 }
 
 // 消息处理函数
-function handleMessage(request: requestType, _: senderType, sendResponse: sendResponseType) {
+async function handleMessage(request: requestType, _: senderType, sendResponse: sendResponseType) {
   console.log('【Background】 收到消息:', request);
 
   switch(request.type) {
@@ -35,6 +45,64 @@ function handleMessage(request: requestType, _: senderType, sendResponse: sendRe
       globalState.content = request.payload?.text || request.payload?.html || '';
       sendResponse({ status: 'success', message: '内容已接收' });
       return true;
+    // 【打开侧边栏】
+    // 根据 Chrome API 文档：https://developer.chrome.com/docs/extensions/reference/api/sidePanel
+    // chrome.sidePanel.open() 只能在响应用户操作时调用
+    // 从 content script 发送消息到这里时，用户手势上下文应该仍然有效
+    case 'OPEN_SIDEPANEL':
+      try {
+        // 查询当前活动标签页
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (!tab) {
+          console.warn('【Background】⚠️ 无法获取当前标签页');
+          sendResponse({ status: 'error', message: '无法获取当前标签页' });
+          return true;
+        }
+
+        // 优先使用 tabId（推荐，针对特定标签页）
+        if (tab.id !== undefined && tab.id !== null) {
+          console.log('【Background】准备打开侧边栏，标签页ID:', tab.id);
+          try {
+            await chrome.sidePanel.open({ tabId: tab.id });
+            console.log('【Background】✅ 侧边栏已打开，标签页ID:', tab.id);
+            sendResponse({ status: 'success', message: '侧边栏已打开' });
+            return true;
+          } catch (openError: any) {
+            console.warn('【Background】使用 tabId 打开失败，尝试 windowId:', openError.message);
+            // 如果使用 tabId 失败，尝试使用 windowId
+            if (tab.windowId !== undefined && tab.windowId !== null) {
+              await chrome.sidePanel.open({ windowId: tab.windowId });
+              console.log('【Background】✅ 侧边栏已打开（使用 windowId），窗口ID:', tab.windowId);
+              sendResponse({ status: 'success', message: '侧边栏已打开' });
+              return true;
+            } else {
+              throw openError;
+            }
+          }
+        } 
+        // 如果无法获取 tabId，使用 windowId
+        else if (tab.windowId !== undefined && tab.windowId !== null) {
+          console.log('【Background】使用 windowId 打开侧边栏，窗口ID:', tab.windowId);
+          await chrome.sidePanel.open({ windowId: tab.windowId });
+          console.log('【Background】✅ 侧边栏已打开，窗口ID:', tab.windowId);
+          sendResponse({ status: 'success', message: '侧边栏已打开' });
+          return true;
+        } else {
+          throw new Error('无法获取当前标签页ID或窗口ID');
+        }
+      } catch (error: any) {
+        console.error('【Background】❌ 打开侧边栏失败:', error);
+        // 提供更详细的错误信息
+        const errorMsg = error.message || '打开侧边栏失败';
+        console.error('【Background】错误详情:', {
+          message: errorMsg,
+          name: error.name,
+          stack: error.stack
+        });
+        sendResponse({ status: 'error', message: errorMsg });
+      }
+      return true; // 保持消息通道开放，等待异步操作完成
     // 【获取模板列表】
     case 'FETCH_TEMPLATES':
       fetchTemplates().then(templates => {
