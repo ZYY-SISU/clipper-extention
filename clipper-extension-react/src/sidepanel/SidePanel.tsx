@@ -12,7 +12,7 @@ import {
   User,         // 🟢 新增：用于个人用户图标
   Settings      // 🟢 新增：用于设置图标
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType,UserConfig } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import './SidePanel.css';
@@ -33,7 +33,8 @@ function SidePanel() {
   const [isSaving, setIsSaving] = useState(false);// 🟢 2. 新增状态：控制导出按钮的 Loading 状态
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
-  const [bitableUrl, setBitableUrl] = useState(''); // 🟢 [新增] 存储用户填写的飞书多维表格链接
+  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false); // 初始化 Loading // 🟢 [新增] 存储用户填写的飞书多维表格链接
   
   
   // 🟢 [新增] 控制是否显示“设置面板”
@@ -486,6 +487,7 @@ ${sentimentShow}\n\n`;
                 token: json.data.token           // 用户 Token (存飞书要用)
               });
               alert(`登录成功！你好，${json.data.user.name}`);
+              checkAndInitConfig(json.data.token);// 🟢 登录成功后，立即触发初始化流程
             } else {
               alert("后端登录失败: " + json.error);
             }
@@ -497,6 +499,55 @@ ${sentimentShow}\n\n`;
       }
     );
   };
+
+// =================================================================================
+  //新建飞书多维表格
+  // =================================================================================
+  // 🟢 [新增] 检查并初始化配置
+  const checkAndInitConfig = async (token: string) => {
+    setIsInitializing(true);
+    try {
+      // 1. 先看 Chrome 本地有没有存过
+      const storage = await chrome.storage.sync.get(['clipper_conf']);
+
+      if (storage.clipper_conf) {
+        console.log("读取到本地配置:", storage.clipper_conf);
+
+        // 🟢 [修改] 增加 "as UserConfig" 进行类型断言
+        // 告诉 TS：把 storage.clipper_conf 强制当做 UserConfig 类型处理
+        setUserConfig(storage.clipper_conf as UserConfig);
+
+        setIsInitializing(false);
+        return;
+      }
+
+      // 2. 如果没存过，请求后端自动创建
+      console.log("未找到配置，开始自动初始化...");
+      const res = await fetch('http://localhost:3000/api/init-feishu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userAccessToken: token })
+      });
+      
+      const json = await res.json();
+      if (json.code === 200) {
+        const newConfig = json.data;
+        // 3. 存入 Chrome 同步存储 (永久保存)
+        await chrome.storage.sync.set({ 'clipper_conf': newConfig });
+        setUserConfig(newConfig);
+        alert("🎉 已为你自动创建好【AI 剪藏知识库】！");
+      } else {
+        throw new Error(json.error);
+      }
+
+    } catch (e: any) {
+      console.error(e);
+      alert(`初始化失败: ${e.message}\n请确保你已开通“多维表格”相关权限`);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
 // =================================================================================
   //  配置飞书多维表格，辅助工具：从飞书 URL 中提取 AppToken 和 TableId
   // 链接示例：https://xxx.feishu.cn/base/bascnABCDEF123?table=tblXYZ789
@@ -533,37 +584,23 @@ ${sentimentShow}\n\n`;
       return;
     }
 
-    // 2. 检查是否配置了表格链接
-    if (!bitableUrl) {
-      alert("请先点击侧边栏的⚙️设置按钮，填入你的多维表格链接！");
-      setShowSettings(true); // 自动帮用户打开设置页
+   // 🟢 改用 userConfig 判断
+    if (!userConfig) {
+      // 如果已登录但没配置，尝试重新初始化
+      await checkAndInitConfig(userInfo.token);
       return;
     }
 
-    // 3. 解析链接
-    const ids = parseFeishuUrl(bitableUrl);
-    if (!ids) {
-      alert("表格链接格式不对。\n请复制完整的飞书多维表格链接 (包含 /base/bas... 和 ?table=tbl...)");
-      return;
-    }
-
-    setIsSaving(true); //设置状态
-
+    setIsSaving(true);
     try {
-      // 1. 获取当前浏览器 Tab 的 URL (需要加上 url 字段)
-      // 注意：这需要在 manifest.json 中开启 "tabs" 或 "activeTab" 权限
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const currentUrl = tab.url || '';
-
-      // 2. 组装数据
       const payload = {
-        ...structuredData, // title, summary, tags, sentiment
-        url: currentUrl,   // 补全后端 feishuService 需要的 url 字段
-        userAccessToken: userInfo.token, // 🟢 用户的 Token
-        appToken: ids.appToken, // 🟢 用户的表格 ID
-        tableId: ids.tableId    // 🟢 用户的表 ID
+        ...structuredData,
+        url: tab.url || '',
+        userAccessToken: userInfo.token,
+        appToken: userConfig.appToken, // 🟢 直接从自动配置里拿
+        tableId: userConfig.tableId
       };
-
       // 3. 发送给后端
       const res = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
@@ -785,21 +822,7 @@ ${sentimentShow}\n\n`;
         <div style={{ marginBottom: '8px', fontSize: '13px', fontWeight: '600', color: '#334155' }}>
           飞书多维表格链接
         </div>
-        <input
-          type="text"
-          value={bitableUrl}
-          onChange={(e) => setBitableUrl(e.target.value)}
-          placeholder="粘贴链接，例如 https://feishu.cn/base/bas..."
-          style={{
-            width: '100%',
-            padding: '10px',
-            fontSize: '13px',
-            border: '1px solid #cbd5e1',
-            borderRadius: '8px',
-            boxSizing: 'border-box',
-            outline: 'none'
-          }}
-        />
+       
         <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
           ℹ️ 请打开你的飞书多维表格，直接复制浏览器顶部的完整地址栏链接粘贴到这里。
         </div>
@@ -821,6 +844,40 @@ ${sentimentShow}\n\n`;
       >
         保存并返回
       </button>
+
+
+      {/* 🟢 [新增] 红色重置按钮 */}
+      <button
+        onClick={async () => {
+          if (confirm("确定要重置吗？这将清除当前的表格绑定。\n下次同步时，系统将为你创建一个全新的飞书表格。")) {
+            // 1. 清除 Chrome 本地存储
+            await chrome.storage.sync.remove(['clipper_conf']);
+            // 2. 清除 React 状态
+            setUserConfig(null);
+            //setBitableUrl('');
+            // 3. 关闭设置页
+            setShowSettings(false);
+            alert("✅ 重置成功！\n请重新点击【存入飞书】或【个人用户】头像，系统会自动为你创建新表格。");
+          }
+        }}
+        style={{
+          marginTop: '12px',
+          width: '100%',
+          padding: '10px',
+          background: 'transparent',
+          color: '#ef4444', // 警示红
+          border: '1px solid #ef4444',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '13px'
+        }}
+      >
+        重置/重新创建表格
+      </button>
+
+
+
     </div>
   );
 
