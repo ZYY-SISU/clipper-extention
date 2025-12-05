@@ -68,7 +68,6 @@ function SidePanel() {
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
 
   // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
-   // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 's' || event.key === 'S')) {
@@ -241,6 +240,7 @@ function SidePanel() {
         body: JSON.stringify({ content, template: selectedTemplateId, model: selectedModel.id })
       });
       const data = await response.json();
+      console.log("返回的结构化数据：",data)
       if (!response.ok) throw new Error(data.error);
       
       setStructuredData(data); 
@@ -251,7 +251,13 @@ function SidePanel() {
       
       let displayText = `### ${data.title || t('analysisResult')}\n\n`;
       displayText += `> ${data.summary || t('noSummary')}\n\n`;
-      if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n`;
+      if (data.sentiment) displayText += `**${t('sentiment')}**: ${data.sentiment}\n\n`;
+      if (data.up_name) displayText += `**${t('up_name')}**: ${data.up_name}\n\n`;
+      if (data.play_count) displayText += `**${t('play_count')}**: ${data.play_count}\n\n`;
+      if (data.like_count) displayText += `**${t('like_count')}**: ${data.like_count}\n\n`;
+      if (data.coin_count) displayText += `**${t('coin_count')}**: ${data.coin_count}\n\n`;
+      if (data.collect_count) displayText += `**${t('collect_count')}**: ${data.collect_count}\n\n`;
+      if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n\n`;
       displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
 
       setChatHistory(prev => [...prev, { role: 'ai', text: displayText }]);
