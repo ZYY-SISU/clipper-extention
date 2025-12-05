@@ -5,6 +5,7 @@ export type MessageType =
  | 'ANALYZE'             // 分析
  | 'SAVE_TO_FEISHU'      // 保存到飞书
  | 'OPEN_SIDEPANEL'      // 打开侧边栏
+ | 'TOGGLE_PANEL'
  | string;
 
 // CLIP_CONTENT 的负载结构（允许 text/html 可选，同时扩展来源 URL 等）
@@ -25,7 +26,8 @@ export type requestType =
  | {type: 'ANALYZE', payload: {content: string, template: string, model: string}}
  | {type: 'SAVE_TO_FEISHU', payload: {content: string, template: string, model: string, url: string}}
  | {type: 'OPEN_SIDEPANEL'}
- | { type: 'UPDATE_STRUCTURED_DATA';payload: any }
+ | { type: 'UPDATE_STRUCTURED_DATA';payload: StructuredDataType }
+ | { type: 'TOGGLE_PANEL' }
 
 
 // Chrome 发送方信息（对齐 chrome.runtime.MessageSender 的常用字段，全部可选，避免类型报错）
@@ -115,4 +117,22 @@ export interface LinkData {
 export interface UserConfig {
     appToken: string;
     tables: { [key: string]: string }; // key是模版ID(summary/bilibili), value是tableId
+  }
+
+  // -----------------------------------------------------
+  // 后端返回的结构化数据
+  export interface StructuredDataType {
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    sentiment?: string;
+    up_name?: string;
+    play_count?: string;
+    like_count?: string;
+    coin_count?: string;
+    collect_count?: string;
+    columns?: string[];
+    data?: string[];
+    text?: string;
+    checked?: boolean;
   }

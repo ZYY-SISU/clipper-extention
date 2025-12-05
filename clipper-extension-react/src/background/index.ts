@@ -1,10 +1,10 @@
 // 类型定义引入
-import type{ senderType, sendResponseType, templateType, requestType } from '../types/index';
+import type{ senderType, sendResponseType, templateType, requestType, StructuredDataType } from '../types/index';
 
 // 全局状态存储
 const globalState = {
   content: '',
-  structuredData: null,
+  structuredData: null as StructuredDataType | null,
   templates: [] as templateType[],
   isLoadingTemplates: true
 }
@@ -68,8 +68,9 @@ async function handleMessage(request: requestType, _: senderType, sendResponse: 
             console.log('【Background】✅ 侧边栏已打开，标签页ID:', tab.id);
             sendResponse({ status: 'success', message: '侧边栏已打开' });
             return true;
-          } catch (openError: any) {
-            console.warn('【Background】使用 tabId 打开失败，尝试 windowId:', openError.message);
+          } catch (openError: unknown) {
+            const errorMessage = openError instanceof Error ? openError.message : '未知错误';
+            console.warn('【Background】使用 tabId 打开失败，尝试 windowId:', errorMessage);
             // 如果使用 tabId 失败，尝试使用 windowId
             if (tab.windowId !== undefined && tab.windowId !== null) {
               await chrome.sidePanel.open({ windowId: tab.windowId });
@@ -91,14 +92,14 @@ async function handleMessage(request: requestType, _: senderType, sendResponse: 
         } else {
           throw new Error('无法获取当前标签页ID或窗口ID');
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('【Background】❌ 打开侧边栏失败:', error);
         // 提供更详细的错误信息
-        const errorMsg = error.message || '打开侧边栏失败';
+        const errorMsg = error instanceof Error ? error.message || '打开侧边栏失败' : '未知错误';
         console.error('【Background】错误详情:', {
           message: errorMsg,
-          name: error.name,
-          stack: error.stack
+          name: error instanceof Error ? error.name : '未知错误',
+          stack: error instanceof Error ? error.stack : '无栈信息'
         });
         sendResponse({ status: 'error', message: errorMsg });
       }
@@ -172,9 +173,10 @@ async function fetchTemplates() {
     } else {
       throw new Error(json.message || '获取模板列表失败');
     }
-  } catch(error: any) {
+  } catch(error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
     // 后端服务未启动或网络错误时，使用默认模板
-    console.warn('⚠️ 后端服务不可用，使用默认模板列表:', error.message);
+    console.warn('⚠️ 后端服务不可用，使用默认模板列表:', errorMessage);
     globalState.templates = DEFAULT_TEMPLATES;
     globalState.isLoadingTemplates = false;
     return DEFAULT_TEMPLATES;
@@ -182,45 +184,45 @@ async function fetchTemplates() {
 }
 
 // 处理AI分析
-async function handleStructure(content: string, template: string, model: string) {
-  try {
-    console.log('【Background】 调用AI分析接口，模型:', model);
+// async function handleStructure(content: string, template: string, model: string) {
+//   try {
+//     console.log('【Background】 调用AI分析接口，模型:', model);
     
-    // 检查必填参数
-    if (!content || !template || !model) {
-      throw new Error('缺少必要参数: content, template 或 model');
-    }
+//     // 检查必填参数
+//     if (!content || !template || !model) {
+//       throw new Error('缺少必要参数: content, template 或 model');
+//     }
     
-    const response = await fetch('http://localhost:3000/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: content,
-        template, 
-        model       
-      })
-    });
+//     const response = await fetch('http://localhost:3000/api/analyze', {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify({
+//         content: content,
+//         template, 
+//         model       
+//       })
+//     });
 
-    const data = await response.json();
+//     const data = await response.json();
     
-    if (!response.ok) {
-      // 提取更详细的错误信息
-      const errorMessage = data.error || `服务器返回错误 (状态码: ${response.status})`;
-      console.error('【Background】 AI分析失败:', errorMessage);
-      throw new Error(errorMessage);
-    }
+//     if (!response.ok) {
+//       // 提取更详细的错误信息
+//       const errorMessage = data.error || `服务器返回错误 (状态码: ${response.status})`;
+//       console.error('【Background】 AI分析失败:', errorMessage);
+//       throw new Error(errorMessage);
+//     }
 
-    globalState.structuredData = data;
-    return data;
-  } catch (error) {
-    console.error('【Background】 AI分析失败:', error);
-    // 提供更友好的错误信息
-    const errorMessage = error instanceof Error ? 
-      (error.message.includes('model') ? `不支持的模型: ${model}` : error.message) : 
-      'AI分析请求失败';
-    throw new Error(errorMessage);
-  }
-}
+//     globalState.structuredData = data;
+//     return data;
+//   } catch (error) {
+//     console.error('【Background】 AI分析失败:', error);
+//     // 提供更友好的错误信息
+//     const errorMessage = error instanceof Error ? 
+//       (error.message.includes('model') ? `不支持的模型: ${model}` : error.message) : 
+//       'AI分析请求失败';
+//     throw new Error(errorMessage);
+//   }
+// }
 
 // 保存到飞书
 async function handleSaveToFeishu() {
