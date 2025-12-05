@@ -7,6 +7,16 @@ const manifest = defineManifest({
   manifest_version: 3,
   name: "AI智能剪藏助手",
   version: "1.0.0",
+  commands: {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "打开 AI 剪藏助手"
+    }
+    // 你还可以定义其他命令，然后在 background 中监听
+  },
   description: "智能结构化剪藏扩展",
   "icons": {
     "16": "icons/icon-16.png",
