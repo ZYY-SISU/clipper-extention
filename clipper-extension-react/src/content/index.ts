@@ -651,12 +651,12 @@ function showToolbar(rect: DOMRect): void {
   const rectTop = rect.top + scrollY;
   const rectBottom = rect.bottom + scrollY;
   const rectLeft = rect.left + scrollX;
-  const rectRight = rect.right + scrollX;
+  // const rectRight = rect.right + scrollX;
   const rectCenterX = rectLeft + rect.width / 2;
   
   // 优先位置：选区上方居中
-  let preferredTop = rectTop - toolbarHeight - gap;
-  let preferredLeft = rectCenterX - toolbarWidth / 2;
+  const preferredTop = rectTop - toolbarHeight - gap;
+  const preferredLeft = rectCenterX - toolbarWidth / 2;
   
   // 垂直方向智能定位
   let finalTop = preferredTop;
@@ -1247,15 +1247,15 @@ function clearMultiSelectionHighlights() {
 }
 
 // 显示多选高亮
-function showMultiSelectionHighlights() {
-  clearMultiSelectionHighlights();
+// function showMultiSelectionHighlights() {
+//   clearMultiSelectionHighlights();
   
-  multipleSelections.forEach((sel, index) => {
-    // 尝试从保存的数据中恢复选区位置
-    // 注意：由于选区是动态的，这里我们只能显示一个提示
-    // 实际应用中可能需要保存Range对象或使用其他方法
-  });
-}
+//   multipleSelections.forEach((sel, index) => {
+//     // 尝试从保存的数据中恢复选区位置
+//     // 注意：由于选区是动态的，这里我们只能显示一个提示
+//     // 实际应用中可能需要保存Range对象或使用其他方法
+//   });
+// }
 
 // 更新合并按钮显示状态
 function updateMergeButton() {
@@ -1297,7 +1297,7 @@ async function openSidebar() {
           }
         }
       );
-    }) as any;
+    }) as { status: string; message?: string };
     
     console.log('[SmartClipper] 打开侧边栏请求已发送，响应:', response);
     
@@ -1309,12 +1309,13 @@ async function openSidebar() {
         console.warn('[SmartClipper] 错误信息:', response.message);
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[SmartClipper] ❌ 打开侧边栏失败:', error);
     // 如果是因为消息通道已关闭（侧边栏可能已经打开），不显示错误
-    if (!error.message?.includes('message port closed') && 
-        !error.message?.includes('Extension context invalidated') &&
-        !error.message?.includes('Could not establish connection')) {
+    if (!errorMessage.includes('message port closed') && 
+        !errorMessage.includes('Extension context invalidated') &&
+        !errorMessage.includes('Could not establish connection')) {
       showToast('打开侧边栏失败，请手动点击扩展图标', 'warning');
     }
   }
