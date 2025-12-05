@@ -8,9 +8,10 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, StructuredDataType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
+import { TRANSLATIONS } from '../utils/translations';
 import './SidePanel.css';
 
 const AI_MODELS = [
@@ -20,120 +21,6 @@ const AI_MODELS = [
   { id: 'claude-3-5', name: 'Claude 3.5', icon: Bot, color: '#7c3aed', tag: 'smart' },
 ];
 
-// --- 🌐 双语字典 (中/英) ---
-const TRANSLATIONS: Record<string, any> = {
-  'zh-CN': {
-    title: "Smart Clipper",
-    history: "历史记录",
-    settings: "设置",
-    feishuStatus: "飞书知识库状态",
-    connected: "已连接",
-    notConnected: "未初始化，请先登录",
-    appearance: "外观主题",
-    light: "浅色",
-    dark: "深色",
-    language: "语言设置",
-    resetConfig: "重置配置",
-    resetConfirm: "确认要重置配置吗？这将断开与当前飞书表格的连接。",
-    resetSuccess: "已重置",
-    // 剪藏页
-    previewTitle: "原始内容预览",
-    previewPlaceholder: "请在网页上划选文字，内容将显示在这里...",
-    selectTemplate: "选择模版",
-    startAnalyze: "开始分析",
-    // 模版名称
-    template_summary: "智能摘要",
-    template_table: "表格提取",
-    template_list: "代办清单",
-    template_video_summary: "视频摘要",
-    // 聊天页
-    newChat: "开启新对话",
-    defaultChatTitle: "新对话",
-    chatPlaceholderText: "有什么可以帮你的吗？",
-    inputPlaceholder: "问点什么...",
-    // 按钮与操作
-    saveToFeishu: "存入飞书",
-    saved: "已保存",
-    login: "登录",
-    userPrefix: "用户",
-    rename: "重命名",
-    delete: "删除",
-    confirmDelete: "确定要删除这条对话记录吗？",
-    tabClipper: "剪藏",
-    tabChat: "对话",
-    // 动态反馈
-    analysisResult: "分析结果",
-    noSummary: "未生成摘要",
-    tags: "标签",
-    model: "模型",
-    thinking: "思考中...",
-    noResponse: "无回复",
-    error: "错误",
-    alertNoContent: "请先剪藏内容",
-    alertNoTemplate: "请选择模板",
-    alertReqFailed: "请求失败",
-    alertLoginCancel: "登录已取消",
-    alertLoginFail: "登录失败",
-    alertConnectFail: "连接后端失败",
-    alertInitFail: "初始化失败",
-    alertInitSuccess: "🎉 知识库初始化完成！",
-    alertExportFail: "导出失败，请检查控制台",
-  },
-  'en': {
-    title: "Smart Clipper",
-    history: "History",
-    settings: "Settings",
-    feishuStatus: "Feishu Status",
-    connected: "Connected",
-    notConnected: "Not initialized, please login",
-    appearance: "Appearance",
-    light: "Light",
-    dark: "Dark",
-    language: "Language",
-    resetConfig: "Reset Config",
-    resetConfirm: "Are you sure you want to reset? This will disconnect the Feishu table.",
-    resetSuccess: "Reset successfully",
-    previewTitle: "Content Preview",
-    previewPlaceholder: "Select text on the page to display here...",
-    selectTemplate: "Select Template",
-    startAnalyze: "Analyze",
-    // Templates
-    template_summary: "Summary",
-    template_table: "Table Extraction",
-    template_list: "To-Do List",
-    template_video_summary: "Video Summary",
-    // Chat
-    newChat: "New Chat",
-    defaultChatTitle: "New Chat",
-    chatPlaceholderText: "How can I help you today?",
-    inputPlaceholder: "Ask something...",
-    saveToFeishu: "Save to Feishu",
-    saved: "Saved",
-    login: "Login",
-    userPrefix: "User",
-    rename: "Rename",
-    delete: "Delete",
-    confirmDelete: "Delete this conversation?",
-    tabClipper: "Clipper",
-    tabChat: "Chat",
-    analysisResult: "Analysis Result",
-    noSummary: "No summary generated",
-    tags: "Tags",
-    model: "Model",
-    thinking: "Thinking...",
-    noResponse: "No response",
-    error: "Error",
-    alertNoContent: "Please clip content first",
-    alertNoTemplate: "Please select a template",
-    alertReqFailed: "Request failed",
-    alertLoginCancel: "Login cancelled",
-    alertLoginFail: "Login failed",
-    alertConnectFail: "Connection failed",
-    alertInitFail: "Initialization failed",
-    alertInitSuccess: "🎉 Initialized!",
-    alertExportFail: "Export failed",
-  }
-};
 
 function SidePanel() {
   // --- 状态管理 ---
@@ -155,12 +42,12 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<any>(null);
+  const [structuredData, setStructuredData] = useState<StructuredDataType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [, setIsInitializing] = useState(false);
   
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
@@ -195,11 +82,11 @@ function SidePanel() {
 
   // --- 核心逻辑 ---
   useEffect(() => {
-    const handleMessage = (request: any, sender: any, sendResponse: any) => {
+    const handleMessage = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
       if (request.type === 'TOGGLE_PANEL') {
         // 收到信号，切换状态 (显示 -> 隐藏，隐藏 -> 显示)
         setIsVisible(prev => !prev);
-        sendResponse({ status: 'ok' });
+        sendResponse({ status: 'success' });
       }
     };
     
@@ -248,7 +135,7 @@ function SidePanel() {
             if (pageData) setContent(pageData.text || pageData.html || '');
           }
         }
-      } catch (error) { console.error('Tab update error:', error); }
+      } catch (error: unknown) { console.error('Tab update error:', error); }
     };
 
     chrome.tabs.onActivated.addListener(handleTabChange);
@@ -280,13 +167,14 @@ function SidePanel() {
         const json = await res.json();
         if (json.code === 200 && Array.isArray(json.data)) setTemplates(json.data);
         else throw new Error();
-      } catch (e) {
+      } catch (e: unknown) {
         setTemplates([
           { id: 'summary', name: '智能摘要', iconType: 'text' },
           { id: 'table', name: '表格提取', iconType: 'table' },
           { id: 'checklist', name: '清单整理', iconType: 'check' },
           { id: 'video-summary', name: '视频摘要', iconType: 'Video' }
         ]);
+        console.error('Failed to fetch templates:', e);
       } finally { setIsLoadingTemplates(false); }
     };
     fetchTemplates();
@@ -367,9 +255,10 @@ function SidePanel() {
       displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
 
       setChatHistory(prev => [...prev, { role: 'ai', text: displayText }]);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setStatus('ready');
-      alert(`${t('alertReqFailed')}: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`${t('alertReqFailed')}: ${errorMessage}`);
     }
   };
 
@@ -389,8 +278,9 @@ function SidePanel() {
       });
       const data = await res.json();
       setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: data.reply || t('noResponse') }));
-    } catch (error: any) {
-      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: `${t('error')}: ${error.message}` }));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: `${t('error')}: ${errorMessage}` }));
     }
   };
 
@@ -409,7 +299,10 @@ function SidePanel() {
             setUserInfo({ name: json.data.user.name, avatar: json.data.user.avatar_url, token: json.data.token });
             checkAndInitConfig(json.data.token);
           } else alert(`${t('alertLoginFail')}: ${json.error}`);
-        } catch (e) { alert(t('alertConnectFail')); }
+        } catch (e: unknown) {
+          console.error('Connection error:', e);
+          alert(t('alertConnectFail'));
+        }
       }
     });
   };
@@ -429,7 +322,10 @@ function SidePanel() {
           alert(t('alertInitSuccess'));
         }
       }
-    } catch (e: any) { alert(`${t('alertInitFail')}: ${e.message}`); } 
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      alert(`${t('alertInitFail')}: ${errorMessage}`);
+    }
     finally { setIsInitializing(false); }
   };
 
@@ -450,7 +346,10 @@ function SidePanel() {
       });
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (error) { alert(t('alertExportFail')); } 
+    } catch (error: unknown) {
+        console.error('Export error:', error);
+        alert(t('alertExportFail'));
+      } 
     finally { setIsSaving(false); }
   };
 
