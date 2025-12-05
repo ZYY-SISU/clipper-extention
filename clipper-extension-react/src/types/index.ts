@@ -136,3 +136,22 @@ export interface UserConfig {
     text?: string;
     checked?: boolean;
   }
+
+  export interface SummaryType {
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    sentiment?: string;
+  }
+
+  export interface VideoType {
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    sentiment?: string;
+    up_name?: string;
+    play_count?: string;
+    like_count?: string;
+    coin_count?: string;
+    collect_count?: string;
+  }

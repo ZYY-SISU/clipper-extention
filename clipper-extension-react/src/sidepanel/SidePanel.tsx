@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, StructuredDataType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -42,7 +42,7 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<StructuredDataType | null>(null);
+  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);
@@ -248,19 +248,17 @@ function SidePanel() {
 
       setStatus('ready');
       setView('chat'); 
-      
-      let displayText = `### ${data.title || t('analysisResult')}\n\n`;
-      displayText += `> ${data.summary || t('noSummary')}\n\n`;
-      if (data.sentiment) displayText += `**${t('sentiment')}**: ${data.sentiment}\n\n`;
-      if (data.up_name) displayText += `**${t('up_name')}**: ${data.up_name}\n\n`;
-      if (data.play_count) displayText += `**${t('play_count')}**: ${data.play_count}\n\n`;
-      if (data.like_count) displayText += `**${t('like_count')}**: ${data.like_count}\n\n`;
-      if (data.coin_count) displayText += `**${t('coin_count')}**: ${data.coin_count}\n\n`;
-      if (data.collect_count) displayText += `**${t('collect_count')}**: ${data.collect_count}\n\n`;
-      if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n\n`;
-      displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
 
-      setChatHistory(prev => [...prev, { role: 'ai', text: displayText }]);
+      if(selectedTemplateId === 'summary') {
+        // 渲染SummaryCard
+        const storageData = SummaryCard(data)
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+
+      }else if(selectedTemplateId === 'video-summary') {
+        // 渲染VideoCard
+        const storageData = VideoCard(data)
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+      }
     } catch (error: unknown) {
       setStatus('ready');
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -345,6 +343,7 @@ function SidePanel() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const currentTemplate = selectedTemplateId || 'summary';
       const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
+
       await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -571,6 +570,48 @@ function SidePanel() {
       </div>
     </div>
   );
+
+  const SummaryCard = (data: SummaryType) => {
+    const { 
+      title = '', 
+      summary = '', 
+      tags = [], 
+      sentiment = '' 
+    } = data;
+    
+    let displayText = `### ${title || t('analysisResult')}\n\n ` + `> ${summary || t('noSummary')}\n\n`
+    if(sentiment) displayText += `**${t('sentiment')}**: ${sentiment}\n\n`
+    if(tags.length > 0) displayText += `**${t('tags')}**: ${tags.join(', ')}\n\n`
+    displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
+    return displayText
+  }
+
+  const VideoCard = (data: VideoType) => { 
+    const { 
+      title = '', 
+      summary = '', 
+      tags = [], 
+      sentiment = '', 
+      up_name = '', 
+      play_count = '', 
+      like_count = '', 
+      coin_count = '', 
+      collect_count = '' 
+    } = data;
+    
+    let displayText = `### ${title || t('analysisResult')}\n\n`
+        displayText += `> ${summary || t('noSummary')}\n\n`
+       if(sentiment) displayText += `**${t('sentiment')}**: ${sentiment}\n\n`
+       if(up_name) displayText += `**${t('up_name')}**: ${up_name}\n\n`
+       if(play_count) displayText += `**${t('play_count')}**: ${play_count}\n\n`
+       if(like_count) displayText += `**${t('like_count')}**: ${like_count}\n\n`
+       if(collect_count) displayText += `**${t('collect_count')}**: ${collect_count}\n\n`
+       if(coin_count) displayText += `**${t('coin_count')}**: ${coin_count}\n\n`
+       if(tags.length > 0) displayText += `**${t('tags')}**: ${tags.join(', ')}\n\n`
+    displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
+
+    return displayText
+  }
 
   return (
     // ✨ 控制显示/隐藏

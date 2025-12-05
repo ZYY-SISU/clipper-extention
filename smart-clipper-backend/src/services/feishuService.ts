@@ -85,13 +85,15 @@ export const initUserBase = async (userAccessToken: string) => {
     await addFieldsToTable(userAccessToken, appToken, table2Id, FIELDS_VIDEO);
 
     console.log("✅ 初始化完成！");
+    console.log("摘要表格ID:", table1Id);
+    console.log("视频表格ID:", table2Id);
 
     // 🟢 返回映射表：告诉前端哪个模版用哪个ID
     return {
       appToken: appToken,
       tables: {
         "summary": table1Id,  // 摘要模版 -> 表1
-        "bilibili": table2Id, // 视频模版 -> 表2
+        "video-summary": table2Id, // 视频模版 -> 表2
         "default": table1Id   // 兜底
       }
     };
