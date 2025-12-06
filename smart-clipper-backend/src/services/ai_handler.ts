@@ -50,7 +50,7 @@ const CONFIGS: Record<string, any> = {
 };
 
 
-export async function processContent(htmlContent: string, templateId: string, systemPrompt: string,modelId: string = 'deepseek-r1') {
+export async function processContent(htmlContent: string, systemPrompt: string,modelId: string = 'deepseek-r1') {
   // 1. 容错处理：如果前端没传 modelId，默认用 DeepSeek R1
   const config = CONFIGS[modelId] || CONFIGS['gpt-4o'];
   //const template = TEMPLATES[templateId] || TEMPLATES['summary'];

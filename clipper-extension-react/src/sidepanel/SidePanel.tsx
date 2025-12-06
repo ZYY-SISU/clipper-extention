@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon,Music
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, StructuredDataType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -42,10 +42,10 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<StructuredDataType | null>(null);
+  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
-  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);
+  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string,open_id: string;} | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
   const [, setIsInitializing] = useState(false);
   
@@ -68,7 +68,6 @@ function SidePanel() {
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
 
   // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
-   // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 's' || event.key === 'S')) {
@@ -243,37 +242,62 @@ function SidePanel() {
         body: JSON.stringify({ content, template: selectedTemplateId, model: selectedModel.id })
       });
       const data = await response.json();
+      console.log("返回的结构化数据：",data)
       if (!response.ok) throw new Error(data.error);
       
+
       setStructuredData(data); 
+      
+
+      // // [核心修改] 给数据打上“模板烙印”
+      // // 这样数据自己就知道它是属于哪个模板的 (summary 还是 viedo-summary)
+      // const dataWithTemplate = {
+      //   ...data, 
+      //   _templateId: selectedTemplateId // 记录当前的模板 ID
+      // };
+
+      // setStructuredData(dataWithTemplate); // 存入带模板 ID 的数据
+      
+
       chrome.runtime.sendMessage({ type: 'UPDATE_STRUCTURED_DATA', payload: data }).catch(() => {});
+      
+
 
       setStatus('ready');
       setView('chat'); 
       
-      let displayText = `### ${data.title || t('analysisResult')}\n\n`;
+      // let displayText = `### ${data.title || t('analysisResult')}\n\n`;
 
-      // 如果有封面图，显示封面
-      if (data.cover && data.cover !== 'N/A') {
-        displayText += `![Cover](${data.cover})\n\n`;
-      }
+      // // 如果有封面图，显示封面
+      // if (data.cover && data.cover !== 'N/A') {
+      //   displayText += `![Cover](${data.cover})\n\n`;
+      // }
 
-      displayText += `> ${data.summary || t('noSummary')}\n\n`;
+      // displayText += `> ${data.summary || t('noSummary')}\n\n`;
       
-      // 🌟 新增：如果有 tracks 数组，生成 Markdown 表格
-      if (data.tracks && Array.isArray(data.tracks) && data.tracks.length > 0) {
-        displayText += `| # | 歌名 | 歌手 | 时长 |\n|---|---|---|---|\n`;
-        data.tracks.forEach((track: any, index: number) => {
-          // 如果有链接，给歌名加上链接
-          const nameDisplay = track.url && track.url !== 'N/A' ? `[${track.name}](${track.url})` : track.name;
-          displayText += `| ${index + 1} | ${nameDisplay} | ${track.artist} | ${track.duration} |\n`;
-        });
-        displayText += `\n`;
-      }
-      if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n`;
-      displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
+      // // 🌟 新增：如果有 tracks 数组，生成 Markdown 表格
+      // if (data.tracks && Array.isArray(data.tracks) && data.tracks.length > 0) {
+      //   displayText += `| # | 歌名 | 歌手 | 时长 |\n|---|---|---|---|\n`;
+      //   data.tracks.forEach((track: any, index: number) => {
+      //     // 如果有链接，给歌名加上链接
+      //     const nameDisplay = track.url && track.url !== 'N/A' ? `[${track.name}](${track.url})` : track.name;
+      //     displayText += `| ${index + 1} | ${nameDisplay} | ${track.artist} | ${track.duration} |\n`;
+      //   });
+      //   displayText += `\n`;
+      // }
+      // if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n`;
+      // displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
 
-      setChatHistory(prev => [...prev, { role: 'ai', text: displayText }]);
+      if(data.templateId === 'summary') {
+        // 渲染SummaryCard
+        const storageData = SummaryCard(data)
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+
+      }else if(data.templateId === 'video-summary') {
+        // 渲染VideoCard
+        const storageData = VideoCard(data)
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+      }
     } catch (error: unknown) {
       setStatus('ready');
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -303,6 +327,7 @@ function SidePanel() {
     }
   };
 
+//登录
   const handleLogin = () => {
     const CLIENT_ID = "cli_a9a8533b64789cd6"; 
     const REDIRECT_URI = chrome.identity.getRedirectURL(); 
@@ -315,8 +340,22 @@ function SidePanel() {
           const res = await fetch('http://localhost:3000/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
           const json = await res.json();
           if(json.code === 200) {
-            setUserInfo({ name: json.data.user.name, avatar: json.data.user.avatar_url, token: json.data.token });
-            checkAndInitConfig(json.data.token);
+
+            // setUserInfo({ name: json.data.user.name, avatar: json.data.user.avatar_url, token: json.data.token });
+            // checkAndInitConfig(json.data.token);
+            const feishuUser = json.data.user;
+
+            const userData = {
+              name: feishuUser.name,
+              avatar: feishuUser.avatar_url,
+              token: json.data.token,
+              open_id: feishuUser.open_id //  必须拿到这个 ID
+            }; // 构造前端用的 User 对象
+           
+            setUserInfo(userData);
+           
+            // 🟢 传入完整的 userData 进行检查
+            checkAndInitConfig(userData);
           } else alert(`${t('alertLoginFail')}: ${json.error}`);
         } catch (e: unknown) {
           console.error('Connection error:', e);
@@ -325,43 +364,107 @@ function SidePanel() {
       }
     });
   };
-
-  const checkAndInitConfig = async (token: string) => {
+//   传入完整的 userInfo 对象，而不仅仅是 token
+  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id: string }) => {
     setIsInitializing(true);
     try {
-      const storage = await chrome.storage.sync.get(['clipper_conf']);
-      if (storage.clipper_conf) {
-        setUserConfig(storage.clipper_conf as UserConfig);
-      } else {
-        const res = await fetch('http://localhost:3000/api/init-feishu', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userAccessToken: token }) });
-        const json = await res.json();
-        if (json.code === 200) {
-          await chrome.storage.sync.set({ 'clipper_conf': json.data });
-          setUserConfig(json.data);
-          alert(t('alertInitSuccess'));
-        }
+      const storage = await chrome.storage.sync.get(['clipper_conf']);//检查本地存储
+      const localConfig = storage.clipper_conf as UserConfig | undefined;
+
+      //  账号冲突检查
+      // 如果本地有配置，但配置的主人(userId)不是当前登录的人(open_id)
+      if (localConfig && localConfig.userId !== user.open_id) {
+        console.warn("⚠️ 检测到账号切换，旧配置失效，准备重新初始化...");
+         alert(`⚠️ 检测到账号切换，旧配置失效，准备重新初始化..."`);
+      } 
+      // 如果配置存在且属于当前用户，直接使用
+      else if (localConfig) {
+        console.log("✅ 读取到当前用户的配置:", localConfig);
+        setUserConfig(localConfig);
+        setIsInitializing(false);
+        return;
       }
-    } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      alert(`${t('alertInitFail')}: ${errorMessage}`);
+
+      // 2. 需要初始化 (没配置，或者账号变了)
+      console.log("正在为新用户初始化知识库...");
+      const res = await fetch('http://localhost:3000/api/init-feishu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userAccessToken: user.token })
+      });
+      
+      const json = await res.json();
+      if (json.code === 200) {
+        //  3. 组装带有身份信息的配置
+        const newConfig: UserConfig = {
+          userId: user.open_id, // 绑定 ID
+          name: user.name,      // 绑定名字
+          // avatar: user.avatar,  // 绑定头像
+          appToken: json.data.appToken,
+          tables: json.data.tables
+        };
+
+        // 存入云端
+        await chrome.storage.sync.set({ 'clipper_conf': newConfig });
+        setUserConfig(newConfig);
+        alert(`🎉 已为【${user.name}】自动关联飞书知识库！`);
+      } else {
+        throw new Error(json.error);
+      }
+
+    } catch (e: any) {
+      console.error(e);
+      alert(`初始化失败: ${e.message}`);
+    } finally {
+      setIsInitializing(false);
     }
-    finally { setIsInitializing(false); }
   };
 
+
+  //导出到飞书
   const handleExportToFeishu = async () => {
     if (!structuredData) return;
     if (!userInfo || !userInfo.token) return alert(t('notConnected'));
-    if (!userConfig) { await checkAndInitConfig(userInfo.token); return; }
+
+    if (userConfig && userConfig.userId !== userInfo.open_id) {
+      alert(`配置冲突！\n当前配置属于：${userConfig.name}\n当前登录用户：${userInfo.name}\n\n系统将自动重新初始化...`);
+      await checkAndInitConfig(userInfo); // 强制重新初始化
+      return;
+    }
+
+    if (!userConfig) {
+       await checkAndInitConfig(userInfo);
+       return;
+    }
 
     setIsSaving(true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const currentTemplate = selectedTemplateId || 'summary';
-      const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
+
+      // const currentTemplate = selectedTemplateId || 'summary';
+      // const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
+      // const tableId = userConfig.tables[currentTemplate] ;
+      // console.log("导出到飞书，tableId:",tableId)
+
+      // if (!tableId) {
+      //   alert(t('没有找到对应的飞书表格ID，请前往设置页面初始化'));
+      //   setIsSaving(false);
+      //   return;
+      // }
+
+           // 🟢 [核心修改] 优先使用数据自带的模板 ID
+      // 逻辑顺序：数据里的烙印 > 当前UI选中的 > 默认summary
+      const templateIdToUse = structuredData.templateId || selectedTemplateId || 'summary';
+
+      // 根据 ID 去配置里查表
+      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+
+      console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
+
       await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId })
+        body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
@@ -584,6 +687,48 @@ function SidePanel() {
       </div>
     </div>
   );
+
+  const SummaryCard = (data: SummaryType) => {
+    const { 
+      title = '', 
+      summary = '', 
+      tags = [], 
+      sentiment = '' 
+    } = data;
+    
+    let displayText = `### ${title || t('analysisResult')}\n\n ` + `> ${summary || t('noSummary')}\n\n`
+    if(sentiment) displayText += `**${t('sentiment')}**: ${sentiment}\n\n`
+    if(tags.length > 0) displayText += `**${t('tags')}**: ${tags.join(', ')}\n\n`
+    displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
+    return displayText
+  }
+
+  const VideoCard = (data: VideoType) => { 
+    const { 
+      title = '', 
+      summary = '', 
+      tags = [], 
+      sentiment = '', 
+      up_name = '', 
+      play_count = '', 
+      like_count = '', 
+      coin_count = '', 
+      collect_count = '' 
+    } = data;
+    
+    let displayText = `### ${title || t('analysisResult')}\n\n`
+        displayText += `> ${summary || t('noSummary')}\n\n`
+       if(sentiment) displayText += `**${t('sentiment')}**: ${sentiment}\n\n`
+       if(up_name) displayText += `**${t('up_name')}**: ${up_name}\n\n`
+       if(play_count) displayText += `**${t('play_count')}**: ${play_count}\n\n`
+       if(like_count) displayText += `**${t('like_count')}**: ${like_count}\n\n`
+       if(collect_count) displayText += `**${t('collect_count')}**: ${collect_count}\n\n`
+       if(coin_count) displayText += `**${t('coin_count')}**: ${coin_count}\n\n`
+       if(tags.length > 0) displayText += `**${t('tags')}**: ${tags.join(', ')}\n\n`
+    displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
+
+    return displayText
+  }
 
   return (
     // ✨ 控制显示/隐藏
