@@ -165,12 +165,13 @@ export interface UserConfig {
     text?: string;
     checked?: boolean;
     // 技术文档相关字段
-    apiName?: string;
     description?: string;
+    category?: string;
+    mainSections?: string[];
     parameters?: parameterType[];
     returns?: string;
-    examples?: string;
-    notes?: string;
+    examples?: string[];
+    keyPoints?: string[];
     relatedLinks?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
