@@ -118,7 +118,22 @@ function getPageMeta(): PageMeta {
   };
 }
 
+
+
 function extractUniversalContent(): ClipContentPayload {
+
+// ==========================如果是 QQ 音乐，直接返回处理好的 Markdown，不再走下面的通用逻辑(zyy)========================
+  const musicContent = extractQQMusic();
+  if (musicContent) {
+    return {
+      text: musicContent, // 这里直接发送 Markdown 表格给后端
+      sourceUrl: window.location.href,
+      meta: getPageMeta() // 依然带上元数据（标题、封面等）
+    };
+  }
+  
+  //=====================================================================================================
+//通用逻辑
   const url = window.location.href;
   const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
   const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
@@ -133,6 +148,61 @@ function extractUniversalContent(): ClipContentPayload {
     meta: meta
   };
 }
+
+//////////////////////// qq 音乐专用提取器 (zyy)/////////////////////////////////////
+function extractQQMusic(): string | null {
+  if (!window.location.hostname.includes('y.qq.com')) return null;// 仅在 QQ 音乐域名下运行
+  
+  console.log('🎵 检测到 QQ 音乐，正在执行专用提取...');
+  // 核心：直接找歌单列表的行
+  // QQ音乐网页版的典型 class 是 .songlist__list li 或 .songlist__item
+  const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
+  
+  if (rows.length === 0) return null;
+
+  // 我们在前端直接把数据整理成 Markdown 格式发给后端,后端 AI 只需要做“格式化”
+  let md = `### 歌单元数据\n\n`;
+  
+  // 提取封面
+  const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
+  if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
+
+  // 提取简介
+  const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
+  if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
+
+  // 构建表格
+  md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
+
+  rows.forEach((row) => {
+    // 歌名
+    const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
+    const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
+    const link = nameEl ? nameEl.href : '';
+
+    // 歌手 (可能有多个)
+    const artistEls = row.querySelectorAll('.songlist__artist a');
+    const artist = Array.from(artistEls).map(el => el.textContent).join(', ') || 'N/A';
+    
+    // 专辑
+    const albumEl = row.querySelector('.songlist__album a');
+    const album = albumEl ? albumEl.textContent?.trim() : 'N/A';
+    
+    // 时长
+    const timeEl = row.querySelector('.songlist__time');
+    const time = timeEl ? timeEl.textContent?.trim() : 'N/A';
+
+    // 拼接到 Markdown
+    md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
+  });
+
+  return md;
+}
+////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
 
 // ============= 【✨ 悬浮球 & 交互核心逻辑 (新增部分)】================
 

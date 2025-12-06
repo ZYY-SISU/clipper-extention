@@ -153,12 +153,15 @@ app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
   try {
     // 🟢 从前端接收所有必要信息
-    const { 
-      // 数据内容
-      title, summary, tags, sentiment, url,
-      up_name, play_count, like_count, coin_count, collect_count,
-      userAccessToken, appToken, tableId    
-    } = req.body;
+    // const { 
+    //   // 数据内容
+    //   title, summary, tags, sentiment, url,
+    //   up_name, play_count, like_count, coin_count, collect_count,
+    //   userAccessToken, appToken, tableId    
+    // } = req.body;
+
+    const payload = req.body;
+    const { userAccessToken, appToken, tableId } = payload;
     console.log('当前tableId:', tableId);
 
     // 简单的校验
@@ -170,12 +173,14 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: '未配置目标表格' });
       return;
     }
+    console.log(`📥 收到保存请求，包含字段: ${Object.keys(payload).join(', ')}`);
+    
+    if (payload.tracks) {
+      console.log(`🎵 检测到音乐列表，共 ${payload.tracks.length} 首`);
+    }
 
-    // 调用服务
-    await addRecord(
-      { title, summary, tags, sentiment, url, up_name, play_count, like_count, coin_count, collect_count }, 
-      { userAccessToken, appToken, tableId }
-    );
+    // 3. 调用服务 (直接把 payload 传进去，Service 层会自己判断怎么处理)
+    await addRecord(payload, { userAccessToken, appToken, tableId });
 
     res.json({ success: true, message: '已同步到您的飞书' });
 
