@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -42,7 +42,7 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | null>(null);
+  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);
@@ -130,8 +130,8 @@ function SidePanel() {
           }
           
           if (tab.id) {
-            const pageData = await chrome.tabs.sendMessage(tab.id, { type: 'REQUEST_CONTENT' }).catch(() => null);
-            if (pageData) setContent(pageData.text || pageData.html || '');
+              const pageData = await chrome.tabs.sendMessage(tab.id, { type: 'REQUEST_CONTENT' }).catch(() => null);
+              if (pageData) setContent(pageData.text || pageData.html || '');
           }
         }
       } catch (error: unknown) { console.error('Tab update error:', error); }
@@ -171,7 +171,8 @@ function SidePanel() {
           { id: 'summary', name: '智能摘要', iconType: 'text' },
           { id: 'table', name: '表格提取', iconType: 'table' },
           { id: 'checklist', name: '清单整理', iconType: 'check' },
-          { id: 'video-summary', name: '视频摘要', iconType: 'Video' }
+          { id: 'video-summary', name: '视频摘要', iconType: 'Video' },
+          { id: 'tech-doc', name: '技术文档', iconType: 'globe' },
         ]);
         console.error('Failed to fetch templates:', e);
       } finally { setIsLoadingTemplates(false); }
@@ -257,6 +258,10 @@ function SidePanel() {
       }else if(selectedTemplateId === 'video-summary') {
         // 渲染VideoCard
         const storageData = VideoCard(data)
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+      }else if(selectedTemplateId === 'tech-doc') {
+        // 渲染TechDocCard
+        const storageData = TechDocCard(data)
         setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
       }
     } catch (error: unknown) {
@@ -608,6 +613,36 @@ function SidePanel() {
        if(collect_count) displayText += `**${t('collect_count')}**: ${collect_count}\n\n`
        if(coin_count) displayText += `**${t('coin_count')}**: ${coin_count}\n\n`
        if(tags.length > 0) displayText += `**${t('tags')}**: ${tags.join(', ')}\n\n`
+    displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
+
+    return displayText
+  }
+
+  const TechDocCard = (data: TechDocType) => {
+    const { 
+      title = '',
+      description = '',
+      category = '',
+      mainSections = [],
+      parameters = [],
+      returns = '',
+      examples = [],
+      keyPoints = [],
+      relatedLinks = [],
+      tags = []
+    } = data;
+    
+    let displayText = `### ${title || t('analysisResult')}\n\n`
+    if(description) displayText += `> ${description || t('noDescription')}\n\n`
+    if(category) displayText += `**${t('category')}**: ${category}\n\n`
+    if(mainSections.length > 0) displayText += `**${t('mainSections')}**: ${mainSections.join('\n')}\n\n`
+    if(parameters.length > 0) displayText += `**${t('parameters')}**: ${parameters.map(p => `${p.name} (${p.type})`).join('\n')}\n\n`
+    if(returns) displayText += `**${t('returns')}**: ${returns}\n\n`
+    if(examples?.length > 0) displayText += `**${t('examples')}**: ${examples.join('\n')}\n\n`
+    if(keyPoints?.length > 0) displayText += `**${t('keyPoints')}**: ${keyPoints?.join('\n')}\n\n`
+    if(relatedLinks?.length > 0) displayText += `**${t('relatedLinks')}**: ${relatedLinks?.join('\n')}\n\n`
+    if(tags?.length > 0) displayText += `**${t('tags')}**: ${tags?.join(', ')}\n\n`
+   
     displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`
 
     return displayText
