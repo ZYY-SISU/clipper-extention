@@ -164,6 +164,15 @@ export interface UserConfig {
     data?: string[];
     text?: string;
     checked?: boolean;
+    // 技术文档相关字段
+    description?: string;
+    category?: string;
+    mainSections?: string[];
+    parameters?: parameterType[];
+    returns?: string;
+    examples?: string[];
+    keyPoints?: string[];
+    relatedLinks?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
 
@@ -185,5 +194,27 @@ export interface UserConfig {
     like_count?: string;
     coin_count?: string;
     collect_count?: string;
+    templateId?: string; // 🟢 新增这一行，? 表示它是可选的
+  }
+
+  interface parameterType {
+    name: string;
+    type: string;
+    description: string;
+    required?: boolean;
+    default?: string;
+  }
+
+  export interface TechDocType {
+    title?: string;
+    description?: string;
+    category?: string;
+    mainSections?: string[];
+    parameters?: parameterType[];
+    returns?: string;
+    examples?: string[];
+    keyPoints?: string[];
+    relatedLinks?: string[];
+    tags?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
