@@ -292,16 +292,16 @@ function SidePanel() {
       if(data.templateId === 'summary') {
         // 渲染SummaryCard
         const storageData = SummaryCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
 
       }else if(data.templateId === 'video-summary') {
         // 渲染VideoCard
         const storageData = VideoCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
       }else if(selectedTemplateId === 'tech-doc') {
         // 渲染TechDocCard
         const storageData = TechDocCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
       }
     } catch (error: unknown) {
       setStatus('ready');
@@ -325,7 +325,12 @@ function SidePanel() {
         body: JSON.stringify({ message: currentMsg, model: selectedModel.id, context: structuredData || content })
       });
       const data = await res.json();
-      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: data.reply || t('noResponse') }));
+      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ 
+        role: 'ai', 
+        text: data.reply || t('noResponse'), 
+        templateId: structuredData?.templateId,
+        structuredData: structuredData // 存储完整的结构化信息
+      }));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: `${t('error')}: ${errorMessage}` }));
@@ -417,9 +422,9 @@ function SidePanel() {
         throw new Error(json.error);
       }
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert(`初始化失败: ${e.message}`);
+      alert(`初始化失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsInitializing(false);
     }
@@ -475,6 +480,55 @@ function SidePanel() {
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error: unknown) {
         console.error('Export error:', error);
+        alert(t('alertExportFail'));
+      } 
+    finally { setIsSaving(false); }
+  };
+
+  // 导出单条AI消息到飞书
+  const handleExportSingleMessage = async (message: ChatMessage) => {
+    if (!message.templateId) return alert('此消息没有关联的模板信息');
+    if (!userInfo || !userInfo.token) return alert(t('notConnected'));
+
+    if (userConfig && userConfig.userId !== userInfo.open_id) {
+      alert(`配置冲突！\n当前配置属于：${userConfig.name}\n当前登录用户：${userInfo.name}\n\n系统将自动重新初始化...`);
+      await checkAndInitConfig(userInfo); // 强制重新初始化
+      return;
+    }
+
+    if (!userConfig) {
+       await checkAndInitConfig(userInfo);
+       return;
+    }
+
+    setIsSaving(true);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // 使用消息中存储的模板ID
+      const templateIdToUse = message.templateId;
+
+      // 根据 ID 去配置里查表
+      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+
+      console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
+
+      // 直接使用消息中存储的完整结构化信息
+      const exportData = {
+        ...message.structuredData,
+        templateId: templateIdToUse,
+        url: tab.url || '',
+      };
+
+      await fetch('http://localhost:3000/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+      });
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error: unknown) {
+        console.error('Single message export error:', error);
         alert(t('alertExportFail'));
       } 
     finally { setIsSaving(false); }
@@ -679,7 +733,15 @@ function SidePanel() {
       )}
       {chatHistory.map((msg, i) => (
         <div key={i} className={`message ${msg.role}`}>
-          {msg.role === 'ai' ? <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown> : msg.text}
+          {msg.role === 'ai' ? (
+            <div className="ai-message-container">
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
+              <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg)}>
+                <CloudUpload size={16} />
+                <span>{t('export')}</span>
+              </button>
+            </div>
+          ) : msg.text}
         </div>
       ))}
       <div ref={chatEndRef} style={{height:'1px'}}/>

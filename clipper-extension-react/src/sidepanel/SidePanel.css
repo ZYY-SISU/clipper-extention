@@ -396,21 +396,95 @@ body {
    ============================================================================= */
 .chat-view {
   padding: 24px 20px; padding-bottom: 150px;
-  display: flex; flex-direction: column; gap: 24px; min-height: 100%;
+  display: flex; flex-direction: column; gap: 16px; min-height: 100%;
 }
 
-.message { font-size: 15px; line-height: 1.7; max-width: 96%; }
+.message {
+  font-size: 15px; line-height: 1.7; 
+  max-width: 96%;
+  padding: 16px 20px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
 .message.user {
   align-self: flex-end;
   background: var(--gemini-surface);
   color: var(--text-primary);
-  padding: 12px 18px; border-radius: 24px 24px 4px 24px;
+  border-radius: 24px 24px 4px 24px;
+  border: 1px solid var(--border-color);
 }
-.message.ai { align-self: flex-start; width: 100%; color: var(--text-primary); }
-.message.ai h1, .message.ai h2 { font-size: 17px; margin: 20px 0 10px; color: var(--text-primary); }
-.message.ai ul { padding-left: 20px; margin-bottom: 12px; }
-.message.ai code { background: var(--gemini-surface); padding: 2px 6px; border-radius: 6px; font-family: "Roboto Mono", monospace; font-size: 0.9em; color: #ef4444; }
-.message.ai blockquote { border-left: 3px solid var(--border-color); margin: 0; padding-left: 16px; color: var(--text-secondary); }
+
+.message.ai {
+  align-self: flex-start;
+  width: 100%;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 24px 24px 24px 4px;
+}
+
+.ai-message-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.export-single-btn {
+  align-self: flex-end;
+  margin-top: 12px;
+  padding: 6px 12px;
+  background: var(--gemini-blue-soft);
+  color: var(--gemini-blue);
+  border: none;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.export-single-btn:hover {
+  background: var(--gemini-blue);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+}
+
+.export-single-btn:active {
+  transform: translateY(0);
+}
+
+.message.ai h1, .message.ai h2 {
+  font-size: 17px; 
+  margin: 20px 0 10px;
+  color: var(--text-primary);
+}
+
+.message.ai ul {
+  padding-left: 20px; 
+  margin-bottom: 12px;
+}
+
+.message.ai code {
+  background: var(--gemini-surface); 
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: "Roboto Mono", monospace;
+  font-size: 0.9em;
+  color: #ef4444;
+}
+
+.message.ai blockquote {
+  border-left: 3px solid var(--border-color);
+  margin: 12px 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+}
 
 /* 悬浮输入框 */
 .input-floating-area {
