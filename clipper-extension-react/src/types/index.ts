@@ -135,8 +135,6 @@ export interface UserConfig {
     data?: string[];
     text?: string;
     checked?: boolean;
-<<<<<<< HEAD
-=======
   }
 
   export interface SummaryType {
@@ -156,5 +154,4 @@ export interface UserConfig {
     like_count?: string;
     coin_count?: string;
     collect_count?: string;
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
   }

@@ -8,11 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon
 } from 'lucide-react'; 
-<<<<<<< HEAD
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, StructuredDataType } from '../types/index';
-=======
 import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType } from '../types/index';
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -46,11 +42,7 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [content, setContent] = useState('');
-<<<<<<< HEAD
-  const [structuredData, setStructuredData] = useState<StructuredDataType | null>(null);
-=======
   const [structuredData, setStructuredData] = useState<SummaryType | VideoType | null>(null);
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string} | null>(null);
@@ -257,9 +249,6 @@ function SidePanel() {
       setStatus('ready');
       setView('chat'); 
 
-<<<<<<< HEAD
-      setChatHistory(prev => [...prev, { role: 'ai', text: displayText }]);
-=======
       if(selectedTemplateId === 'summary') {
         // 渲染SummaryCard
         const storageData = SummaryCard(data)
@@ -270,7 +259,6 @@ function SidePanel() {
         const storageData = VideoCard(data)
         setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
       }
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
     } catch (error: unknown) {
       setStatus('ready');
       const errorMessage = error instanceof Error ? error.message : String(error);
