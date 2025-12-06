@@ -45,6 +45,7 @@ function SidePanel() {
   const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+  const [singleExportStatus, setSingleExportStatus] = useState<{messageId: number | null, status: 'idle' | 'success', tableUrl?: string}>({messageId: null, status: 'idle'});
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string,open_id: string;} | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
   const [, setIsInitializing] = useState(false);
@@ -471,11 +472,17 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
-      await fetch('http://localhost:3000/api/save', {
+      const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
+      const result = await response.json();
+      
+      if (result.tableUrl) {
+        console.log('飞书表格链接:', result.tableUrl);
+      }
+      
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error: unknown) {
@@ -486,7 +493,7 @@ function SidePanel() {
   };
 
   // 导出单条AI消息到飞书
-  const handleExportSingleMessage = async (message: ChatMessage) => {
+  const handleExportSingleMessage = async (message: ChatMessage, messageIndex: number) => {
     if (!message.templateId) return alert('此消息没有关联的模板信息');
     if (!userInfo || !userInfo.token) return alert(t('notConnected'));
 
@@ -520,13 +527,20 @@ function SidePanel() {
         url: tab.url || '',
       };
 
-      await fetch('http://localhost:3000/api/save', {
+      const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
-      setSaveStatus('success');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      const result = await response.json();
+      
+      // 设置单条消息导出成功状态
+      setSingleExportStatus({messageId: messageIndex, status: 'success', tableUrl: result.tableUrl});
+      
+      // 3秒后重置状态
+      setTimeout(() => {
+        setSingleExportStatus({messageId: null, status: 'idle'});
+      }, 3000);
     } catch (error: unknown) {
         console.error('Single message export error:', error);
         alert(t('alertExportFail'));
@@ -736,7 +750,7 @@ function SidePanel() {
           {msg.role === 'ai' ? (
             <div className="ai-message-container">
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
-              <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg)}>
+              <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg, i)}>
                 <CloudUpload size={16} />
                 <span>{t('export')}</span>
               </button>
@@ -744,6 +758,27 @@ function SidePanel() {
           ) : msg.text}
         </div>
       ))}
+      
+      {/* 导出成功弹窗 */}
+      {singleExportStatus.status === 'success' && singleExportStatus.tableUrl && (
+        <div className="export-success-popup">
+          <div className="popup-content">
+            <CheckCircle size={48} className="success-icon" />
+            <h3>{t('exportSuccess')}</h3>
+            <p>{t('exportSuccessDesc')}</p>
+            {singleExportStatus.tableUrl && (
+              <a 
+                href={singleExportStatus.tableUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="table-link"
+              >
+                {t('viewTable')}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
       <div ref={chatEndRef} style={{height:'1px'}}/>
 
       <div className="input-floating-area">

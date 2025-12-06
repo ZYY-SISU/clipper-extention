@@ -177,7 +177,10 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
       { userAccessToken, appToken, tableId }
     );
 
-    res.json({ success: true, message: '已同步到您的飞书' });
+    // 对应表格链接
+    const tableUrl = `https://bytedance.feishu.cn/base/${appToken}?table=${tableId}`;
+
+    res.json({ success: true, message: '已同步到您的飞书', tableUrl });
 
   } catch (error: any) {
     console.error(error);
