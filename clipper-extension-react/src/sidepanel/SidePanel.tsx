@@ -336,7 +336,7 @@ function SidePanel() {
       }else if (data.templateId === 'music-collection') {
         // 音乐合辑的渲染逻辑（zyy）
         const  musicHtml = MusicCard(data);
-        setChatHistory(prev => [...prev, { role: 'ai', text: musicHtml }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: musicHtml, templateId: selectedTemplateId, structuredData: data }]);
       }else if(selectedTemplateId === 'tech-doc') {
         // 渲染TechDocCard
         const storageData = TechDocCard(data)
