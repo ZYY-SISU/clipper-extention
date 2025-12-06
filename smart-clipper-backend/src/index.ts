@@ -151,9 +151,12 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
   try {
     // 🟢 从前端接收所有必要信息
     const { 
-      title, summary, tags, sentiment, url, // 数据内容
-      userAccessToken, appToken, tableId    // 身份与目标
+      // 数据内容
+      title, summary, tags, sentiment, url,
+      up_name, play_count, like_count, coin_count, collect_count,
+      userAccessToken, appToken, tableId    
     } = req.body;
+    console.log('当前tableId:', tableId);
 
     // 简单的校验
     if (!userAccessToken) {
@@ -167,7 +170,7 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
 
     // 调用服务
     await addRecord(
-      { title, summary, tags, sentiment, url }, 
+      { title, summary, tags, sentiment, url, up_name, play_count, like_count, coin_count, collect_count }, 
       { userAccessToken, appToken, tableId }
     );
 
