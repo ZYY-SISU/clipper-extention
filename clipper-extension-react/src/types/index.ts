@@ -73,6 +73,17 @@ export interface templateType {
   isCustom?: boolean;
 }
 
+export interface McpToolDefinition {
+  id: string;
+  name: string;
+  description: string;
+  parameters?: {
+    type: string;
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
 export interface chatHistoryType {
   role: string
   text: string

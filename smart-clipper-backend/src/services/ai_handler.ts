@@ -1,7 +1,9 @@
 // src/service/ai_handler.ts
 
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import TurndownService from 'turndown';
+import { executeToolCall, getEnabledMcpTools, toOpenAITools } from './mcpTools';
 
 
 // 初始化 HTML 转 Markdown 的服务
@@ -48,6 +50,8 @@ const CONFIGS: Record<string, any> = {
     envKey: 'Openrouter_KEY'
   }
 };
+
+const THINK_TAG_PATTERN = /<think>[\s\S]*?<\/think>/g;
 
 
 export async function processContent(htmlContent: string, systemPrompt: string,modelId: string = 'deepseek-r1') {
@@ -204,12 +208,17 @@ export async function processContent(htmlContent: string, systemPrompt: string,m
  * @param modelId 模型ID
  * @param context 上下文数据 (可能是字符串或JSON对象)
  */
-export async function processChat(userMessage: string, modelId: string = 'deepseek-r1', context?: any) {
+export async function processChat(
+  userMessage: string,
+  modelId: string = 'deepseek-r1',
+  context?: unknown,
+  toolIds: string[] = [],
+) {
   const config = CONFIGS[modelId] || CONFIGS['deepseek-r1'];
   const currentKey = process.env[config.envKey];
 
   if (!currentKey) {
-    return "❌ 配置错误: 未找到 API Key。";
+    return '❌ 配置错误: 未找到 API Key。';
   }
 
   const client = new OpenAI({
@@ -217,44 +226,92 @@ export async function processChat(userMessage: string, modelId: string = 'deepse
     apiKey: currentKey,
     dangerouslyAllowBrowser: true,
     defaultHeaders: {
-      "HTTP-Referer": "https://github.com/SmartClipper", 
-    }
+      'HTTP-Referer': 'https://github.com/SmartClipper',
+    },
   });
 
-  // 构建消息列表
-  const messages: any[] = [
-    { role: "system", content: "你是一个乐于助人的 AI 助手。" }
+  const enabledTools = getEnabledMcpTools(Array.isArray(toolIds) ? toolIds : []);
+  const hasTools = enabledTools.length > 0;
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: '你是一个乐于助人的 AI 助手。' },
   ];
 
-  // 如果有上下文，把它塞给 AI
-  if (context) {
-    const contextStr = typeof context === 'string' ? context : JSON.stringify(context, null, 2);
+  if (hasTools) {
+    const toolSummary = enabledTools
+      .map((tool) => `- ${tool.name}: ${tool.description}`)
+      .join('\n');
     messages.push({
-      role: "system", 
-      content: `【当前上下文信息】\n用户正在浏览或讨论以下内容，请基于此回答用户的问题：\n\n${contextStr.substring(0, 10000)}` // 限制长度防报错
+      role: 'system',
+      content: `已启用以下 MCP 工具，可按需调用：\n${toolSummary}`,
     });
   }
 
-  // 最后放入用户的问题
-  messages.push({ role: "user", content: userMessage });
+  if (context) {
+    const contextStr = typeof context === 'string' ? context : JSON.stringify(context, null, 2);
+    messages.push({
+      role: 'system',
+      content: `【当前上下文信息】\n用户正在浏览或讨论以下内容，请基于此回答用户的问题：\n\n${contextStr.substring(0, 10000)}`,
+    });
+  }
 
-  console.log(`💬 [Chat] 调用模型: ${config.model}, 上下文长度: ${context ? JSON.stringify(context).length : 0}`);
+  messages.push({ role: 'user', content: userMessage });
+
+  console.log(
+    `💬 [Chat] 调用模型: ${config.model}, 上下文长度: ${context ? JSON.stringify(context).length : 0}, 启用工具: ${enabledTools.length}`,
+  );
 
   try {
-    const completion = await client.chat.completions.create({
-      model: config.model,
-      messages: messages,
-      temperature: 0.7,
-    });
+    if (!hasTools) {
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        messages,
+        temperature: 0.7,
+      });
 
-    const rawContent = completion.choices[0].message.content || "（无回复）";
-    // 清洗 R1 思考过程
-    const cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    
-    return cleanContent;
+      const rawContent = completion.choices[0].message.content;
+      return cleanAssistantText(asPlainText(rawContent)) || '（无回复）';
+    }
 
+    const toolPayloads = toOpenAITools(enabledTools);
+    const conversation: ChatCompletionMessageParam[] = [...messages];
+    let safetyCounter = 0;
+
+    while (safetyCounter < 5) {
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        messages: conversation,
+        temperature: 0.7,
+        tools: toolPayloads,
+        tool_choice: 'auto',
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      conversation.push({
+        role: 'assistant',
+        content: assistantMessage.content ?? '',
+        tool_calls: assistantMessage.tool_calls,
+      } as ChatCompletionMessageParam);
+
+      if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        return cleanAssistantText(asPlainText(assistantMessage.content)) || '（无回复）';
+      }
+
+      for (const call of assistantMessage.tool_calls) {
+        const toolResult = await executeToolCall(call, enabledTools);
+        conversation.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: toolResult,
+        } as ChatCompletionMessageParam);
+      }
+
+      safetyCounter += 1;
+    }
+
+    return '❌ MCP 工具调用失败：超过迭代上限。';
   } catch (error: any) {
-    console.error("Chat Error:", error);
+    console.error('Chat Error:', error);
     return `❌ 对话失败: ${error.message}`;
   }
 }
@@ -265,6 +322,33 @@ export async function processChat(userMessage: string, modelId: string = 'deepse
  * @param prompt - 提示词
  * @param modelId - 模型 ID，默认使用 gpt-4o-mini
  */
+function asPlainText(content: unknown): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((chunk: unknown) => {
+        if (typeof chunk === 'string') return chunk;
+        if (
+          chunk &&
+          typeof chunk === 'object' &&
+          'text' in chunk &&
+          typeof (chunk as { text?: unknown }).text === 'string'
+        ) {
+          return (chunk as { text: string }).text;
+        }
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+  return '';
+}
+
+function cleanAssistantText(raw: string): string {
+  return raw.replace(THINK_TAG_PATTERN, '').trim();
+}
+
 export async function processVision(
   imageDataUrl: string, 
   prompt: string, 

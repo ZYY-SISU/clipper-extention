@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon,Music
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -64,6 +64,11 @@ function SidePanel() {
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
@@ -204,6 +209,41 @@ function SidePanel() {
     fetchTemplates();
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    setIsLoadingTools(true);
+
+    fetch('http://localhost:3000/api/tools', { signal: controller.signal })
+      .then(res => res.json())
+      .then(json => {
+        if (!isMounted) return;
+        if (json.code === 200 && Array.isArray(json.data)) {
+          setAvailableTools(json.data);
+          setToolError(null);
+        } else {
+          setToolError('无法加载工具');
+        }
+      })
+      .catch(error => {
+        if (!isMounted) return;
+        console.error('Failed to fetch MCP tools:', error);
+        setToolError('无法加载工具');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingTools(false);
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedToolIds((prev) => prev.filter((id) => availableTools.some((tool) => tool.id === id)));
+  }, [availableTools]);
+
   const getIconComponent = (type:templateType['iconType']) => {
     switch(type) {
       case 'text': return FileText;
@@ -252,6 +292,12 @@ function SidePanel() {
       setConversations(ChatStorage.getConversationList(currentUrl));
     }
     setEditingConvId(null);
+  };
+
+  const toggleToolSelection = (toolId: string) => {
+    setSelectedToolIds((prev) =>
+      prev.includes(toolId) ? prev.filter((id) => id !== toolId) : [...prev, toolId]
+    );
   };
 
   ///////////////////////////////////////【美化音乐卡片】（zyy）//////////////////////////////////
@@ -385,7 +431,12 @@ function SidePanel() {
       const res = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: currentMsg, model: selectedModel.id, context: structuredData || content })
+        body: JSON.stringify({
+          message: currentMsg,
+          model: selectedModel.id,
+          context: structuredData || content,
+          tools: selectedToolIds,
+        })
       });
       const data = await res.json();
       setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ 
@@ -847,10 +898,59 @@ function SidePanel() {
       <div ref={chatEndRef} style={{height:'1px'}}/>
 
       <div className="input-floating-area">
-         <div className="chat-input-wrapper">
-            <input className="chat-input" value={userNote} onChange={(e) => setUserNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={t('inputPlaceholder')} autoFocus />
+        <div className="chat-input-stack">
+          <div className="mcp-tool-toggle">
+            <button
+              type="button"
+              className="mcp-tool-button"
+              onClick={() => setShowToolPicker((prev) => !prev)}
+            >
+              <Sparkles size={16} />
+              <span>MCP 工具</span>
+              {selectedToolIds.length > 0 && <span className="mcp-tool-badge">{selectedToolIds.length}</span>}
+              {isLoadingTools && <Loader2 className="spin" size={14} />}
+              <ChevronDown size={16} className={showToolPicker ? 'open' : ''} />
+            </button>
+            {showToolPicker && (
+              <div className="mcp-tool-panel">
+                {isLoadingTools ? (
+                  <div className="mcp-tool-panel-empty">加载中...</div>
+                ) : availableTools.length === 0 ? (
+                  <div className="mcp-tool-panel-empty">暂无可用工具</div>
+                ) : (
+                  availableTools.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className={`mcp-tool-item ${selectedToolIds.includes(tool.id) ? 'active' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedToolIds.includes(tool.id)}
+                        onChange={() => toggleToolSelection(tool.id)}
+                      />
+                      <div className="mcp-tool-item-body">
+                        <div className="mcp-tool-item-title">{tool.name}</div>
+                        <div className="mcp-tool-item-desc">{tool.description}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+                {toolError && <div className="mcp-tool-panel-error">{toolError}</div>}
+              </div>
+            )}
+          </div>
+          <div className="chat-input-wrapper">
+            <input
+              className="chat-input"
+              value={userNote}
+              onChange={(e) => setUserNote(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder={t('inputPlaceholder')}
+              autoFocus
+            />
             <button className="send-btn-round" onClick={handleSend}><Send size={20} /></button>
-         </div>
+          </div>
+        </div>
       </div>
     </div>
   );

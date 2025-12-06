@@ -497,6 +497,14 @@ body {
   transition: background 0.3s ease;
 }
 
+.chat-input-stack {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .chat-input-wrapper {
   display: flex; align-items: center;
   background: var(--input-bg);
@@ -522,6 +530,109 @@ body {
   transition: 0.2s; flex-shrink: 0;
 }
 .send-btn-round:hover { background: var(--gemini-blue-soft); }
+
+.mcp-tool-toggle {
+  position: relative;
+}
+
+.mcp-tool-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 24px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.mcp-tool-button:hover {
+  border-color: var(--gemini-blue);
+  color: var(--text-primary);
+}
+
+.mcp-tool-button .open {
+  transform: rotate(180deg);
+  transition: transform 0.2s ease;
+}
+
+.mcp-tool-badge {
+  background: var(--gemini-blue-soft);
+  color: var(--gemini-blue);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mcp-tool-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  width: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.mcp-tool-panel-empty,
+.mcp-tool-panel-error {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 4px;
+}
+
+.mcp-tool-panel-error {
+  color: var(--danger-color);
+}
+
+.mcp-tool-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  align-items: flex-start;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.mcp-tool-item + .mcp-tool-item {
+  margin-top: 6px;
+}
+
+.mcp-tool-item input {
+  margin-top: 4px;
+}
+
+.mcp-tool-item.active {
+  border-color: var(--gemini-blue);
+  background: var(--gemini-blue-soft);
+}
+
+.mcp-tool-item-body {
+  flex: 1;
+}
+
+.mcp-tool-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mcp-tool-item-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
 
 /* =============================================================================
    底部模型胶囊

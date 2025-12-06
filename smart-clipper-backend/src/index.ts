@@ -9,6 +9,7 @@ import { analyzeText } from './services/aiService';
 import { processContent, processChat, processVision } from './services/ai_handler';//胡同学的ai模块
 import { addRecord , initUserBase} from './services/feishuService'; 
 import { getUserInfo } from './services/authService';
+import { listMcpTools } from './services/mcpTools';
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
 
@@ -47,6 +48,14 @@ app.get('/api/templates', (req: Request, res: Response) => {
   res.json({
     code: 200,
     data: allTemplates
+  });
+});
+
+app.get('/api/tools', (_req: Request, res: Response) => {
+  const tools = listMcpTools();
+  res.json({
+    code: 200,
+    data: tools,
   });
 });
 
@@ -129,7 +138,7 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
   try {
     //  接收 context 参数
-    const { message, model, context } = req.body;
+    const { message, model, context, tools } = req.body;
 
     if (!message) {
       res.status(400).json({ error: '消息内容不能为空' });
@@ -139,7 +148,7 @@ app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
     console.log(`💬 收到对话请求: ${message.substring(0, 10)}... (含上下文: ${!!context})`);
     
     // 把 context 传给处理函数
-    const reply = await processChat(message, model, context);
+    const reply = await processChat(message, model, context, Array.isArray(tools) ? tools : []);
     
     res.json({ reply });
 
