@@ -660,15 +660,10 @@ function showToolbar(rect: DOMRect): void {
   const rectTop = rect.top + scrollY;
   const rectBottom = rect.bottom + scrollY;
   const rectLeft = rect.left + scrollX;
-<<<<<<< HEAD
-  const rectCenterX = rectLeft + rect.width / 2;
-  
-=======
   // const rectRight = rect.right + scrollX;
   const rectCenterX = rectLeft + rect.width / 2;
   
   // 优先位置：选区上方居中
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
   const preferredTop = rectTop - toolbarHeight - gap;
   const preferredLeft = rectCenterX - toolbarWidth / 2;
   
@@ -1057,8 +1052,6 @@ function clearMultiSelectionHighlights() {
   multiSelectionHighlights = [];
 }
 
-<<<<<<< HEAD
-=======
 // 显示多选高亮
 // function showMultiSelectionHighlights() {
 //   clearMultiSelectionHighlights();
@@ -1071,7 +1064,6 @@ function clearMultiSelectionHighlights() {
 // }
 
 // 更新合并按钮显示状态
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
 function updateMergeButton() {
   const mergeBtn = toolbar?.querySelector('#sc-merge-selections') as HTMLElement;
   const submenu = toolbar?.querySelector('.sc-submenu') as HTMLElement;
@@ -1090,13 +1082,6 @@ function updateMergeButton() {
 // 侧边栏通信
 async function openSidebar() {
   try {
-<<<<<<< HEAD
-    console.log('[SmartClipper] 尝试打开侧边栏');
-    await chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
-  } catch (error) {
-    console.error('[SmartClipper] 打开侧边栏失败:', error);
-    showToast('打开侧边栏失败，请点击浏览器右上角图标', 'error');
-=======
     console.log('[SmartClipper] 开始打开侧边栏...');
     
     // 方法：通过消息通知background打开侧边栏
@@ -1134,7 +1119,6 @@ async function openSidebar() {
         !errorMessage.includes('Could not establish connection')) {
       showToast('打开侧边栏失败，请手动点击扩展图标', 'warning');
     }
->>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
   }
 }
 
