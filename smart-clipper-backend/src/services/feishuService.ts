@@ -26,6 +26,7 @@ const FIELDS_VIDEO = [
   { field_name: "原文链接", type: 15 }
 ];
 
+
 // 辅助：给指定表添加字段
 async function addFieldsToTable(userAccessToken: string, appToken: string, tableId: string, fields: any[]) {
   for (const field of fields) {
@@ -104,38 +105,62 @@ export const initUserBase = async (userAccessToken: string) => {
   }
 };
 
+// 获取飞书表的字段列表
+export const getTableFields = async (appToken: string, tableId: string, accessToken: string) => {
+  const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields`;
 
-// 🟢 [核心修改] 写入记录 (智能判断字段)
+  const res = await axios.get(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (res.data.code !== 0) throw new Error(res.data.msg);
+
+  return res.data.data.items.map((f: any) => f.field_name);
+};
+
+// 写入记录 (智能判断字段)
 export const addRecord = async (data: FeishuData, options: SaveOptions) => {
   const { userAccessToken, appToken, tableId } = options;
   
   if (!userAccessToken || !appToken || !tableId) throw new Error("配置缺失");
 
   try {
-    // 动态组装字段：只发送那些 "非空" 的字段
-    // 这样，如果写入摘要表，就不会发送 "播放量" 这种不存在的字段，从而避免报错
-    const fields: any = {};
 
-    // 通用字段
-    if (data.title) fields["标题"] = data.title;
-    if (data.summary) fields["摘要"] = data.summary;
-    if (data.sentiment) fields["情感"] = data.sentiment;
-    fields["标签"] = Array.isArray(data.tags) ? data.tags.join(", ") : (data.tags || "");
-    fields["原文链接"] = { text: "点击访问", link: data.url || "https://feishu.cn" };
+    //  1. 获取飞书表实际允许的字段名
+    const validFields = await getTableFields(appToken, tableId, userAccessToken);
 
-    // 视频特有字段 (只有当数据里有值时，才往 fields 里塞)
-    if (data.up_name) fields["UP主"] = data.up_name;
-    if (data.play_count) fields["播放量"] = data.play_count;
-    if (data.like_count) fields["点赞"] = data.like_count;
-    if (data.coin_count) fields["投币"] = data.coin_count;
-    if (data.collect_count) fields["收藏"] = data.collect_count;
+    //  2. 根据数据组装候选字段（可能包含飞书表没有的列）
+    const candidateFields: any = {};
 
-    console.log(`🚀 写入数据到表 [${tableId}]... Keys: ${Object.keys(fields)}`);
+    
+    if (data.title) candidateFields["标题"] = data.title;
+    if (data.summary) candidateFields["摘要"] = data.summary;
+    if (data.sentiment) candidateFields["情感"] = data.sentiment;
 
+    candidateFields["标签"] = Array.isArray(data.tags) ? data.tags.join(", ") : (data.tags || "");
+    candidateFields["原文链接"] = { text: "点击访问", link: data.url || "" };
+
+    // 视频字段
+    if (data.up_name) candidateFields["UP主"] = data.up_name;
+    if (data.play_count) candidateFields["播放量"] = data.play_count;
+    if (data.like_count) candidateFields["点赞"] = data.like_count;
+    if (data.coin_count) candidateFields["投币"] = data.coin_count;
+    if (data.collect_count) candidateFields["收藏"] = data.collect_count;
+
+    console.log(`🚀 候选字段 [${tableId}]... Keys: ${Object.keys(candidateFields)}`);
+
+     // 🟢 3. 只保留飞书表中真正存在的字段
+    const fields = Object.fromEntries(
+      Object.entries(candidateFields).filter(([key]) => validFields.includes(key))
+    );
+
+    console.log(`🚀 写入数据到表 [${tableId}]... 发送字段: ${Object.keys(fields)}`);
+
+    // 🟢 4. 写入飞书表
     const response = await axios.post(
       `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
       { fields },
-      { headers: { 'Authorization': `Bearer ${userAccessToken}`, 'Content-Type': 'application/json' } }
+      { headers: { Authorization: `Bearer ${userAccessToken}` } }
     );
 
     if (response.data.code !== 0) throw new Error(`飞书报错: ${response.data.msg}`);

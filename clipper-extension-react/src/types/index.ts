@@ -108,16 +108,45 @@ export interface LinkData {
   text: string;
 }
 
-// export interface UserConfig {
-//     appToken: string;
-//     tableId: string;
-//   }
 
-  // 🟢  新的配置结构：包含一个 tables 字典 用来决定保存到哪个表
+  // 新的配置结构：包含一个 tables 字典 用来决定保存到哪个表
 export interface UserConfig {
+    userId: string;
+    name: string;
+    // avatar: string;
     appToken: string;
     tables: { [key: string]: string }; // key是模版ID(summary/bilibili), value是tableId
   }
+
+  export interface AuthResult {
+  user: {
+    open_id: string; //  确保后端登录接口一定要返回这个 open_id
+    name: string;
+    avatar_url: string;
+    [key: string]: any;
+  };
+  token: string;
+  expiresIn: number;
+}
+
+
+// // 🟢 [改动] 定义用户配置类型
+// export interface UserConfig {
+//   userId: string;
+//   name: string;
+//   // email: string;
+//   // avatar: string;
+//   token: string;
+//   appToken: string;
+//   tables: {
+//     summary: string;      // 摘要表 ID
+//     'video-summary': string; // 视频表 ID
+//     default: string;      // 默认表 ID
+//     // ... 可根据你的模板扩展 ...
+//   };
+//   expiresIn: number;
+//   loginTime: number;
+// }
 
   // -----------------------------------------------------
   // 后端返回的结构化数据
@@ -143,6 +172,7 @@ export interface UserConfig {
     examples?: string;
     notes?: string;
     relatedLinks?: string[];
+    templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
 
   export interface SummaryType {
@@ -150,6 +180,7 @@ export interface UserConfig {
     summary?: string;
     tags?: string[];
     sentiment?: string;
+    templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
 
   export interface VideoType {
@@ -162,6 +193,7 @@ export interface UserConfig {
     like_count?: string;
     coin_count?: string;
     collect_count?: string;
+    templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
 
   interface parameterType {
@@ -183,4 +215,5 @@ export interface UserConfig {
     keyPoints?: string[];
     relatedLinks?: string[];
     tags?: string[];
+    templateId?: string; // 🟢 新增这一行，? 表示它是可选的
   }
