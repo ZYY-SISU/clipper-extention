@@ -72,6 +72,8 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
    const { content, template, model } = req.body; 
    console.log("正在使用模型:",model);
    console.log("正在使用模板:",template);
+
+   console.log("内容:", content);
     
     // 👇👇👇 校验逻辑也要改 👇👇👇
     if (!content) {
@@ -94,18 +96,19 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
     // 调用服务层逻辑,我的测试模块
     // const result = await analyzeText(text,model);
 // 1. 获取 AI 原始结果
-    const rawResult = await processContent(content, template, targetTemplate.systemPrompt, model);
+    const rawResult = await processContent(content, targetTemplate.systemPrompt, model);
     
-   // 🟢 [修改] 核心修复：不要手动一个个写字段了，改为“合并模式”
+   // 不手动一个个写字段，改为“合并模式”
     // 这样未来不管加什么新字段（比如商品价格、论文作者），都不用改这里代码了
     const cleanResult = {
       ...rawResult, // 🌟 关键：先把 AI 返回的所有字段都拿过来 (包含 play_count 等)
+      templateId: targetTemplate.id // 再加上模板 ID 作为烙印
       
-      // 下面是对核心字段的“兜底”处理（如果 AI 没返回，给个默认值）
-      title: rawResult.title || "无标题",
-      summary: rawResult.summary || "暂无摘要",
-      sentiment: rawResult.sentiment || "neutral",
-      tags: Array.isArray(rawResult.tags) ? rawResult.tags : []
+      // // 下面是对核心字段的“兜底”处理（如果 AI 没返回，给个默认值）
+      // title: rawResult.title || "无标题",
+      // summary: rawResult.summary || "暂无摘要",
+      // sentiment: rawResult.sentiment || "neutral",
+      // tags: Array.isArray(rawResult.tags) ? rawResult.tags : []
     };
 
     console.log("处理成功，返回清洗后的结果:", cleanResult);

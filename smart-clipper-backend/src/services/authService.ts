@@ -43,7 +43,7 @@ export const getUserInfo = async (code: string): Promise<AuthResult> => {
     return {
       user: userInfoRes.data.data, // 用于前端展示头像
       token: access_token,         // 🟢 用于后续写入表格 (最重要的!)
-      // refresh_token,            // 生产环境需要这个来刷新 token，MVP 先忽略
+      // refresh_token,            // 生产环境需要这个来刷新 token
       expiresIn: expires_in
     };
 
