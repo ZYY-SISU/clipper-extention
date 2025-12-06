@@ -10,20 +10,20 @@ export const DEFAULT_TEMPLATES: TemplateConfig[] = [
     description: '生成简短的摘要和标签',
     systemPrompt: '你是一个专业的摘要助手。请把用户的内容总结为 JSON 格式，包含 title(标题), summary(摘要), tags(标签数组)。不要输出 markdown 标记。'
   },
-  { 
-    id: 'table', 
-    name: '数据表格', 
-    iconType: 'table',
-    description: '提取关键数据整理为表格',
-    systemPrompt: '你是一个数据分析师。请提取内容中的关键数据，整理为 columns(列名数组) 和 data(行数据数组) 的 JSON 格式。'
-  },
-  { 
-    id: 'list', 
-    name: '待办清单', 
-    iconType: 'check', 
-    description: '提取行动项',
-    systemPrompt: '你是一个待办事项整理员。请提取内容为 checkItems 数组，每项包含 text(内容) 和 checked(false)。返回 JSON。'
-  },
+  // { 
+  //   id: 'table', 
+  //   name: '数据表格', 
+  //   iconType: 'table',
+  //   description: '提取关键数据整理为表格',
+  //   systemPrompt: '你是一个数据分析师。请提取内容中的关键数据，整理为 columns(列名数组) 和 data(行数据数组) 的 JSON 格式。'
+  // },
+  // { 
+  //   id: 'list', 
+  //   name: '待办清单', 
+  //   iconType: 'check', 
+  //   description: '提取行动项',
+  //   systemPrompt: '你是一个待办事项整理员。请提取内容为 checkItems 数组，每项包含 text(内容) 和 checked(false)。返回 JSON。'
+  // },
   {
     id:'video-summary',
     name:'视频剪藏',
@@ -45,6 +45,41 @@ export const DEFAULT_TEMPLATES: TemplateConfig[] = [
     注意：
     - 如果找不到某个具体数字，请返回 "0" 或 "N/A"，不要编造。
     - 只返回 JSON 字符串，不要包含 Markdown 标记。`
+  },
+  {
+   id: 'music-collection',
+    name: '音乐合辑',
+    iconType: 'music',
+    description: '提取专辑/歌单中的曲目列表及元数据',
+    systemPrompt: `你是一个专业的数据清洗专家。用户会提供网页的 Markdown 文本。
+    
+    你的核心任务是：**忽略顶部的文章摘要/简介，深入挖掘页面中部的“播放列表”或“曲目表”数据。**
+
+    请遵循以下步骤进行思考（Chain of Thought）：
+    1. 先浏览全文，找到包含大量歌曲信息的区域（通常表现为重复的行或表格结构）。
+    2. 分析该区域的排版模式，例如："歌名 | 歌手 | 专辑 | 时长" 或者 "1. 歌名 \n 歌手"。
+    3. 提取前 20 首歌曲的详细信息。
+    4. 如果歌手和歌名连在一起（如 "告白气球 - 周杰伦"），请务必将它们分开。
+    5. 如果找不到时长或专辑，填 "N/A"。
+
+    返回严格的 JSON 格式：
+    {
+      "title": "歌单标题",
+      "summary": "简短介绍(不要列出所有歌名)",
+      "cover": "封面图片链接(找 img 标签, 如果没有填N/A)",
+      "tracks": [
+        {
+          "name": "歌曲名(必填)",
+          "artist": "歌手(必填, 尽量找)",
+          "album": "专辑名",
+          "duration": "时长(例如 03:21)",
+          "url": "链接(如果有)"
+        }
+      ],
+      "tags": ["风格", "流派"]
+    }
+    
+    注意：不要输出任何 Markdown 标记，只返回纯 JSON 字符串。`
   }
 
 ];

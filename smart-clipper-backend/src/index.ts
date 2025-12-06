@@ -72,6 +72,8 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
    const { content, template, model } = req.body; 
    console.log("正在使用模型:",model);
    console.log("正在使用模板:",template);
+
+   console.log("内容:", content);
     
     // 👇👇👇 校验逻辑也要改 👇👇👇
     if (!content) {

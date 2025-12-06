@@ -1,6 +1,22 @@
 // src/service/ai_handler.ts
 
 import OpenAI from 'openai';
+import TurndownService from 'turndown';
+
+
+// 初始化 HTML 转 Markdown 的服务
+const turndownService = new TurndownService({
+  headingStyle: 'atx',  // 使用 # 标题风格
+  codeBlockStyle: 'fenced' ,// 使用 ``` 代码块风格
+  linkStyle: 'inlined' // 保持链接跟在文字后面
+});
+// 🌟 关键：让 Turndown 不要删掉表格里的换行，保留更多结构
+turndownService.addRule('preserveTable', {
+  filter: ['table', 'tr', 'td', 'th'],
+  replacement: function (content, node) {
+    return (node as any).isBlock ? '\n\n' + content + '\n\n' : content;
+  }
+});
 
 // 1. 定义模型配置
 const CONFIGS: Record<string, any> = {
@@ -33,22 +49,10 @@ const CONFIGS: Record<string, any> = {
   }
 };
 
-// // 2. 定义处理模版
-// const TEMPLATES: Record<string, any> = {
-//   'summary': {
-//     system: '你是一个专业的摘要助手。请把用户的内容总结为 JSON 格式，包含 title(标题), summary(摘要), tags(标签数组)。不要输出 markdown 标记。'
-//   },
-//   'table': {
-//     system: '你是一个数据分析师。请提取内容中的关键数据，整理为 columns(列名数组) 和 data(行数据数组) 的 JSON 格式。'
-//   },
-//   'list': {
-//     system: '你是一个待办事项整理员。请提取内容为 checkItems 数组，每项包含 text(内容) 和 checked(false)。返回 JSON。'
-//   }
-// };
 
 export async function processContent(htmlContent: string, templateId: string, systemPrompt: string,modelId: string = 'deepseek-r1') {
   // 1. 容错处理：如果前端没传 modelId，默认用 DeepSeek R1
-  const config = CONFIGS[modelId] || CONFIGS['deepseek-r1'];
+  const config = CONFIGS[modelId] || CONFIGS['gpt-4o'];
   //const template = TEMPLATES[templateId] || TEMPLATES['summary'];
 
   // 2. 读取对应的密码
@@ -63,6 +67,29 @@ export async function processContent(htmlContent: string, templateId: string, sy
     };
   }
 
+  ///////////////////////////////优化（赵）///////////////////////////////////
+
+  // 【新增步骤】清洗数据：HTML -> Markdown
+  // 这能极大减少 Token 消耗，并让结构更清晰
+  console.log(`[AI Service] 正在使用${modelId}将 HTML 转换为 Markdown...`);
+  let markdownContent = "";
+  try {
+    // 如果传入的是纯文本，就不转了；如果是 HTML，就转
+    if (htmlContent.trim().startsWith('<')) {
+        markdownContent = turndownService.turndown(htmlContent);
+    } else {
+        markdownContent = htmlContent;
+    }
+  } catch (e) {
+    console.warn("[AI Service] Markdown 转换失败，降级使用原始文本", e);
+    markdownContent = htmlContent;
+  }
+
+  // 截取长度限制（Markdown 更紧凑，可以留更多）
+  const finalInput = markdownContent.substring(0, 50000);
+
+  ///////////////////////////////优化结束///////////////////////////////////
+
   // 3. 准备调用
   const client = new OpenAI({
     baseURL: config.baseURL,
@@ -76,7 +103,8 @@ export async function processContent(htmlContent: string, templateId: string, sy
       model: config.model,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `网页内容如下：\n${htmlContent.substring(0, 15000)}` } 
+        { role: "user", content: `请分析以下网页内容（Markdown格式）：\n\n${finalInput}` }//修正
+        // { role: "user", content: `网页内容如下：\n${htmlContent.substring(0, 15000)}` } 
       ],
       response_format: { type: "json_object" },
       temperature: 0.3,
@@ -96,6 +124,78 @@ export async function processContent(htmlContent: string, templateId: string, sy
     };
   }
 }
+
+// export async function processContent(htmlContent: string, systemPrompt: string, modelId: string = 'deepseek-r1') {
+  
+//   // 1. 获取模型配置
+//   const config = CONFIGS[modelId] || CONFIGS['deepseek-r1'];
+  
+//   // 2. 读取密码
+//   const currentKey = process.env[config.envKey];
+
+//   console.log(`[AI Service] 正在调用模型: ${config.model}`);
+
+//   if (!currentKey) {
+//     return { 
+//       title: "配置错误", 
+//       summary: `未找到环境变量 ${config.envKey}，请检查后端 .env 文件`, 
+//       tags: ["Error"] 
+//     };
+//   }
+
+//   // 🌟【新增步骤】清洗数据：HTML -> Markdown
+//   // 这能极大减少 Token 消耗，并让结构更清晰
+//   console.log(`[AI Service] 正在将 HTML 转换为 Markdown...`);
+//   let markdownContent = "";
+//   try {
+//     // 如果传入的是纯文本，就不转了；如果是 HTML，就转
+//     if (htmlContent.trim().startsWith('<')) {
+//         markdownContent = turndownService.turndown(htmlContent);
+//     } else {
+//         markdownContent = htmlContent;
+//     }
+//   } catch (e) {
+//     console.warn("[AI Service] Markdown 转换失败，降级使用原始文本", e);
+//     markdownContent = htmlContent;
+//   }
+
+//   // 截取长度限制（Markdown 更紧凑，可以留更多）
+//   const finalInput = markdownContent.substring(0, 50000); 
+
+//   // 3. 准备调用
+//   const client = new OpenAI({
+//     baseURL: config.baseURL,
+//     apiKey: currentKey,
+//     dangerouslyAllowBrowser: true
+//   });
+
+//   try {
+//     const completion = await client.chat.completions.create({
+//       model: config.model,
+//       messages: [
+//         { role: "system", content: systemPrompt },
+//         { role: "user", content: `请分析以下网页内容（Markdown格式）：\n\n${finalInput}` } 
+//       ],
+//       response_format: { type: "json_object" },
+//       temperature: 0.3, // 降低随机性，让提取更准确
+//     });
+
+//     const content = completion.choices[0].message.content;
+//     // 移除可能存在的 markdown 代码块标记
+//     const cleanContent = content?.replace(/```json|```/g, '').trim();
+    
+//     return JSON.parse(cleanContent || "{}");
+
+//   } catch (error: any) {
+//     console.error("AI Error Detailed:", error);
+//     return {
+//       title: "AI 处理失败",
+//       summary: `调用失败 (${error.status || '未知状态码'}): ${error.message}`,
+//       tags: ["Error"]
+//     };
+//   }
+// }
+
 
 
  /**

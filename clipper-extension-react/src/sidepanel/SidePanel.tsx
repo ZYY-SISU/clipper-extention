@@ -6,7 +6,7 @@ import {
   Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
-  Video, Trash2, Edit2, Sun, Moon
+  Video, Trash2, Edit2, Sun, Moon,Music
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType, UserConfig, StructuredDataType } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
@@ -187,6 +187,7 @@ function SidePanel() {
       case 'check': return CheckSquare;
       case 'globe': return Globe;
       case 'Video': return Video;
+      case 'music': return Music;
       default: return FileText;
     }
   };
@@ -229,6 +230,7 @@ function SidePanel() {
     setEditingConvId(null);
   };
 
+  //提交内容给后端返回结构化文本
   const handleStructure = async () => {
     if (!content) return alert(t('alertNoContent'));
     if (!selectedTemplateId) return alert(t('alertNoTemplate'));
@@ -250,7 +252,24 @@ function SidePanel() {
       setView('chat'); 
       
       let displayText = `### ${data.title || t('analysisResult')}\n\n`;
+
+      // 如果有封面图，显示封面
+      if (data.cover && data.cover !== 'N/A') {
+        displayText += `![Cover](${data.cover})\n\n`;
+      }
+
       displayText += `> ${data.summary || t('noSummary')}\n\n`;
+      
+      // 🌟 新增：如果有 tracks 数组，生成 Markdown 表格
+      if (data.tracks && Array.isArray(data.tracks) && data.tracks.length > 0) {
+        displayText += `| # | 歌名 | 歌手 | 时长 |\n|---|---|---|---|\n`;
+        data.tracks.forEach((track: any, index: number) => {
+          // 如果有链接，给歌名加上链接
+          const nameDisplay = track.url && track.url !== 'N/A' ? `[${track.name}](${track.url})` : track.name;
+          displayText += `| ${index + 1} | ${nameDisplay} | ${track.artist} | ${track.duration} |\n`;
+        });
+        displayText += `\n`;
+      }
       if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n`;
       displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
 
