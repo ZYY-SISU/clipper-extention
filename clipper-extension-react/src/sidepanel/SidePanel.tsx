@@ -104,6 +104,29 @@ function SidePanel() {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // ✨ [AI 识图] 监听识图结果通知
+  useEffect(() => {
+    const handleVisionResult = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
+      if (request.type === 'VISION_RESULT_READY') {
+        // 更新内容显示
+        const payload = request.payload;
+        if (payload?.text || payload?.html) {
+          setContent(payload.text || payload.html || '');
+        }
+        if (payload && 'structuredData' in payload) {
+          const data = (payload as any).structuredData;
+          setStructuredData(data ?? null);
+        }
+        sendResponse({ status: 'success' });
+        return true;
+      }
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(handleVisionResult);
+    return () => chrome.runtime.onMessage.removeListener(handleVisionResult);
+  }, []);
+
   useEffect(() => {
     const handleTabChange = async () => {
       try {

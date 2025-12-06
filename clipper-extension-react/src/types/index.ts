@@ -6,6 +6,10 @@ export type MessageType =
  | 'SAVE_TO_FEISHU'      // 保存到飞书
  | 'OPEN_SIDEPANEL'      // 打开侧边栏
  | 'TOGGLE_PANEL'
+ | 'CAPTURE_AND_VISION'  // 截图AI识图
+ | 'VISION_RESULT_READY' // AI识图结果已准备好
+ | 'CROP_IMAGE'          // 裁剪图片
+ | 'GET_VISION_RESULT'   // 获取识图结果
  | string;
 
 // CLIP_CONTENT 的负载结构（允许 text/html 可选，同时扩展来源 URL 等）
@@ -16,6 +20,7 @@ export interface ClipContentPayload {
   links?: Array<LinkData>;
   meta?: PageMeta;
   sourceUrl?: string;
+  structuredData?: StructuredDataType | Record<string, unknown>;
 }
 
 
@@ -28,6 +33,10 @@ export type requestType =
  | {type: 'OPEN_SIDEPANEL'}
  | { type: 'UPDATE_STRUCTURED_DATA';payload: StructuredDataType }
  | { type: 'TOGGLE_PANEL' }
+ | { type: 'CAPTURE_AND_VISION'; selection?: { x: number; y: number; width: number; height: number }; pageUrl?: string; isScreenshot?: boolean }
+ | { type: 'VISION_RESULT_READY'; payload: ClipContentPayload }
+ | { type: 'CROP_IMAGE'; dataUrl: string; selection: { x: number; y: number; width: number; height: number } }
+ | { type: 'GET_VISION_RESULT' }
 
 
 // Chrome 发送方信息（对齐 chrome.runtime.MessageSender 的常用字段，全部可选，避免类型报错）
@@ -47,6 +56,9 @@ export interface ResponsePayload {
   data?: unknown;
   message?: string;
   isLoading?: boolean;
+  result?: unknown;  // AI识图结果
+  error?: string;    // 错误信息
+  croppedDataUrl?: string;  // 裁剪后的图片
 }
 
 // sendResponse 回调类型（便于需要时进行显式标注）
@@ -151,6 +163,7 @@ export interface UserConfig {
   // -----------------------------------------------------
   // 后端返回的结构化数据
   export interface StructuredDataType {
+    [key: string]: unknown;
     title?: string;
     summary?: string;
     tags?: string[];

@@ -258,3 +258,67 @@ export async function processChat(userMessage: string, modelId: string = 'deepse
     return `❌ 对话失败: ${error.message}`;
   }
 }
+
+/**
+ * AI 视觉识别功能
+ * @param imageDataUrl - base64 格式的图片数据 URL
+ * @param prompt - 提示词
+ * @param modelId - 模型 ID，默认使用 gpt-4o-mini
+ */
+export async function processVision(
+  imageDataUrl: string, 
+  prompt: string, 
+  modelId: string = 'gpt-4o-mini'
+) {
+  try {
+    // 获取配置
+    const config = CONFIGS[modelId] || CONFIGS['gpt-4o-mini'];
+    const currentKey = process.env[config.envKey];
+
+    if (!currentKey) {
+      throw new Error(`未找到 API 密钥: ${config.envKey}`);
+    }
+
+    // 创建 OpenAI 客户端
+    const client = new OpenAI({
+      baseURL: config.baseURL,
+      apiKey: currentKey,
+    });
+
+    console.log(`[AI Vision] 使用模型: ${config.model}`);
+
+    // 调用 Vision API
+    const completion = await client.chat.completions.create({
+      model: config.model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { 
+              type: 'image_url', 
+              image_url: { 
+                url: imageDataUrl,
+                detail: 'high'  // 使用高清模式
+              } 
+            }
+          ]
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3,
+    });
+
+    const rawContent = completion.choices[0].message.content || "（AI 无回复）";
+    
+    // 清洗思考过程标签
+    const cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    
+    console.log('[AI Vision] 识别完成');
+    return cleanContent;
+
+  } catch (error: any) {
+    console.error('[AI Vision] 错误:', error);
+    throw new Error(`AI 识图失败: ${error.message}`);
+  }
+}
