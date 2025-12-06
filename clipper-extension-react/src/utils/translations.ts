@@ -43,6 +43,15 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     analysisResult: "分析结果",
     noSummary: "未生成摘要",
     tags: "标签",
+<<<<<<< HEAD
+=======
+    sentiment: "情感",
+    up_name: "up主",
+    play_count: "播放量",
+    like_count: "点赞数",
+    coin_count: "投币数",
+    collect_count: "收藏数",
+>>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
     model: "模型",
     thinking: "思考中...",
     noResponse: "无回复",
@@ -97,6 +106,15 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     analysisResult: "Analysis Result",
     noSummary: "No summary generated",
     tags: "Tags",
+<<<<<<< HEAD
+=======
+    sentiment: "Sentiment",
+    up_name: "Upstreamer Name",
+    play_count: "Play Count",
+    like_count: "Like Count",
+    coin_count: "Coin Count",
+    collect_count: "Collect Count",
+>>>>>>> e25bb8a2ceaf99846d9623681adcac0eda9a0648
     model: "Model",
     thinking: "Thinking...",
     noResponse: "No response",
