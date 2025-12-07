@@ -651,6 +651,7 @@ function createToolbar(): HTMLElement {
       opacity: 0 !important; transition: opacity 0.15s ease !important; z-index: 2147483648 !important;
       padding-top: 18px !important;
     }
+    #smart-clipper-toolbar .sc-toolbar-group.submenu-open .sc-submenu { display: flex !important; opacity: 1 !important; }
     #smart-clipper-toolbar .sc-toolbar-group:hover .sc-submenu,
     #smart-clipper-toolbar .sc-submenu:hover { display: flex !important; opacity: 1 !important; }
     
@@ -726,6 +727,30 @@ function createToolbar(): HTMLElement {
       <span>AI识图</span>
     </button>
   `;
+
+  const clipperGroup = toolbarElement.querySelector('.sc-toolbar-group');
+  const submenu = clipperGroup?.querySelector('.sc-submenu') as HTMLElement | null;
+  if (clipperGroup && submenu) {
+    let hideTimer: number | null = null;
+    const showSubmenu = () => {
+      if (hideTimer !== null) {
+        window.clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      clipperGroup.classList.add('submenu-open');
+    };
+    const scheduleHide = () => {
+      if (hideTimer !== null) window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        clipperGroup.classList.remove('submenu-open');
+        hideTimer = null;
+      }, 160);
+    };
+    clipperGroup.addEventListener('mouseenter', showSubmenu);
+    clipperGroup.addEventListener('mouseleave', scheduleHide);
+    submenu.addEventListener('mouseenter', showSubmenu);
+    submenu.addEventListener('mouseleave', scheduleHide);
+  }
 
   document.body.appendChild(toolbarElement);
   return toolbarElement;
