@@ -6,7 +6,7 @@ import {
   Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
-  Video, Trash2, Edit2, Sun, Moon,Music
+  Video, Trash2, Edit2, Sun, Moon, Music, StickyNote
 } from 'lucide-react'; 
 import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
@@ -62,6 +62,11 @@ function SidePanel() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   
+  // 用户感想相关状态
+  const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null); // 当前正在编辑感想的消息索引
+  const [noteInput, setNoteInput] = useState(''); // 感想输入内容
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set()); // 展开的感想列表
+  
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
@@ -84,6 +89,27 @@ function SidePanel() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const handleSaveNote = () => {
+    if (editingNoteIndex === null) return;
+    
+    // 更新聊天历史中的感想
+    const updatedChatHistory = [...chatHistory];
+    updatedChatHistory[editingNoteIndex] = {
+      ...updatedChatHistory[editingNoteIndex],
+      notes: noteInput
+    };
+    
+    // 保存到状态和本地存储
+    setChatHistory(updatedChatHistory);
+    if (currentConversationId && currentUrl) {
+      ChatStorage.updateConversationMessages(currentUrl, currentConversationId, updatedChatHistory);
+    }
+    
+    // 关闭输入框
+    setEditingNoteIndex(null);
+    setNoteInput('');
+  };
 
   // --- 核心逻辑 ---
   useEffect(() => {
@@ -904,10 +930,62 @@ function SidePanel() {
           {msg.role === 'ai' ? (
             <div className="ai-message-container">
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
-              <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg, i)}>
-                <CloudUpload size={16} />
-                <span>{t('export')}</span>
-              </button>
+              <div style={{display: 'flex', gap: 8, marginTop: 8}}>
+                <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg, i)}>
+                  <CloudUpload size={16} />
+                  <span>{t('export')}</span>
+                </button>
+                <button className="export-single-btn" title="添加感想" onClick={() => {
+                  setEditingNoteIndex(i);
+                  setNoteInput(msg.notes || '');
+                }}>
+                  <StickyNote size={16} />
+                  <span>感想</span>
+                </button>
+              </div>
+              {/* 感想显示区域 */}
+              {msg.notes && (
+                <div style={{marginTop: 12, padding: 12, background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border-color)'}}>
+                  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)'}}>
+                      <StickyNote size={14} />
+                      <span>我的感想</span>
+                    </div>
+                    {msg.notes.length > 100 && (
+                      <button onClick={() => setExpandedNotes(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(i)) {
+                          newSet.delete(i);
+                        } else {
+                          newSet.add(i);
+                        }
+                        return newSet;
+                      })} style={{padding: '2px 8px', borderRadius: 12, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11}}>
+                        {expandedNotes.has(i) ? '收起' : '展开'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5}}>
+                    {msg.notes.length > 100 && !expandedNotes.has(i) ? msg.notes.substring(0, 100) + '...' : msg.notes}
+                  </div>
+                </div>
+              )}
+              
+              {/* 感想输入框 */}
+              {editingNoteIndex === i && (
+                <div style={{marginTop: 12, padding: 12, background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border-color)'}}>
+                  <textarea
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="写下你的感想..."
+                    style={{width: '100%', minHeight: 80, padding: 10, borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', resize: 'vertical', fontSize: 13}}
+                  />
+                  <div style={{display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end'}}>
+                    <button onClick={() => setEditingNoteIndex(null)} style={{padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13}}>取消</button>
+                    <button onClick={handleSaveNote} style={{padding: '6px 12px', borderRadius: 6, border: '1px solid var(--gemini-blue)', background: 'var(--gemini-blue)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600}}>保存</button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : msg.text}
         </div>
