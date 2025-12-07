@@ -122,21 +122,123 @@ function getPageMeta(): PageMeta {
 }
 
 
+//////////////////////// 音乐专用提取器 (zyy)/////////////////////////////////////
+
+// 所有提取器只需要关注：能不能处理当前页面？如果能，返回 Markdown 文本。
+interface MusicExtractor {
+  match: (url: string) => boolean;
+  extract: () => string | null;
+}
+
+//  QQ 音乐 
+const qqMusicStrategy: MusicExtractor = {
+  match: (url) => url.includes('y.qq.com'),
+  extract: () => {
+    console.log('🎵 正在执行 QQ 音乐提取...');
+    const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
+    if (rows.length === 0) return null;
+
+    let md = `### 歌单元数据\n\n`;
+    const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
+    if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
+
+    const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
+    if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
+
+    md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
+
+    rows.forEach((row) => {
+      const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
+      const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
+      const link = nameEl ? nameEl.href : '';
+      const artist = Array.from(row.querySelectorAll('.songlist__artist a')).map(el => el.textContent).join(', ') || 'N/A';
+      const album = row.querySelector('.songlist__album a')?.textContent?.trim() || 'N/A';
+      const time = row.querySelector('.songlist__time')?.textContent?.trim() || 'N/A';
+
+      md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
+    });
+    return md;
+  }
+};
+
+// 网易云音乐 
+// 难点：网易云的内容通常嵌在一个 id="g_iframe" 的 iframe 里
+const netEaseStrategy: MusicExtractor = {
+  match: (url) => url.includes('music.163.com'),
+  extract: () => {
+    console.log('🔴 正在执行网易云音乐提取...');
+    
+    // ⚡️ 网易云特攻：穿透 iframe 获取 DOM
+    // 如果我们在顶层页面，数据其实在 iframe 里
+    const iframe = document.querySelector('#g_iframe') as HTMLIFrameElement;
+    // 如果能获取到 iframe 内容就用 iframe，否则用当前 document (防止插件已经注入进 iframe)
+    const doc = (iframe && iframe.contentDocument) ? iframe.contentDocument : document;
+    
+    // 网易云歌单列表通常在 table.m-table
+    const rows = doc.querySelectorAll('.m-table tbody tr');
+    if (rows.length === 0) return null;
+
+    let md = `### 歌单元数据\n\n`;
+    const coverImg = doc.querySelector('.cover img') as HTMLImageElement;
+    if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
+
+    const desc = doc.querySelector('#album-desc-more') || doc.querySelector('#album-desc-dot');
+    if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
+
+    md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
+
+    rows.forEach((row) => {
+      // 网易云 DOM 结构比较老旧，很多信息在 title 属性里
+      const nameEl = row.querySelector('.txt b') || row.querySelector('.txt a');
+      const name = nameEl?.getAttribute('title') || nameEl?.textContent?.trim() || 'N/A';
+      const linkEl = row.querySelector('.txt a') as HTMLAnchorElement;
+      const link = linkEl ? `https://music.163.com${linkEl.getAttribute('href')}` : '';
+      
+      const duration = row.querySelector('.u-dur')?.textContent?.trim() || 'N/A';
+      // 第4列是歌手，第5列是专辑 (简单处理)
+      const artist = (row.querySelector('.text') as HTMLElement)?.getAttribute('title') || 'N/A';
+      const album = (row.querySelectorAll('.text a')[0])?.getAttribute('title') || 'N/A';
+
+      md += `| [${name}](${link}) | ${artist} | ${album} | ${duration} |\n`;
+    });
+
+    return md;
+  }
+};
+
+
+//  策略分发中心 (Aggregator)
+function extractMusicContent(): string | null {
+  const currentUrl = window.location.href;
+  
+  // 定义所有支持的策略
+  const strategies = [qqMusicStrategy, netEaseStrategy];
+
+  // 找到第一个匹配的策略并执行
+  for (const strategy of strategies) {
+    if (strategy.match(currentUrl)) {
+      return strategy.extract();
+    }
+  }
+  
+  return null;
+}
+
 
 function extractUniversalContent(): ClipContentPayload {
 
-// ==========================如果是 QQ 音乐，直接返回处理好的 Markdown，不再走下面的通用逻辑(zyy)========================
-  const musicContent = extractQQMusic();
+// ==========================音乐合集处理逻辑，直接返回处理好的 Markdown，不再走下面的通用逻辑(zyy)========================
+const musicContent = extractMusicContent();
+  
   if (musicContent) {
     return {
-      text: musicContent, // 这里直接发送 Markdown 表格给后端
+      text: musicContent,
       sourceUrl: window.location.href,
-      meta: getPageMeta() // 依然带上元数据（标题、封面等）
+      meta: getPageMeta()
     };
   }
   
-  //=====================================================================================================
-//通用逻辑
+  //==================================通用逻辑======================================================
   const url = window.location.href;
   const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
   const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
@@ -152,55 +254,60 @@ function extractUniversalContent(): ClipContentPayload {
   };
 }
 
+
 //////////////////////// qq 音乐专用提取器 (zyy)/////////////////////////////////////
-function extractQQMusic(): string | null {
-  if (!window.location.hostname.includes('y.qq.com')) return null;// 仅在 QQ 音乐域名下运行
+// function extractQQMusic(): string | null {
+//   if (!window.location.hostname.includes('y.qq.com')) return null;// 仅在 QQ 音乐域名下运行
   
-  console.log('🎵 检测到 QQ 音乐，正在执行专用提取...');
-  // 核心：直接找歌单列表的行
-  // QQ音乐网页版的典型 class 是 .songlist__list li 或 .songlist__item
-  const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
+//   console.log('🎵 检测到 QQ 音乐，正在执行专用提取...');
+//   // 核心：直接找歌单列表的行
+//   // QQ音乐网页版的典型 class 是 .songlist__list li 或 .songlist__item
+//   const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
   
-  if (rows.length === 0) return null;
+//   if (rows.length === 0) return null;
 
-  // 我们在前端直接把数据整理成 Markdown 格式发给后端,后端 AI 只需要做“格式化”
-  let md = `### 歌单元数据\n\n`;
+//   // 我们在前端直接把数据整理成 Markdown 格式发给后端,后端 AI 只需要做“格式化”
+//   let md = `### 歌单元数据\n\n`;
   
-  // 提取封面
-  const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
-  if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
+//   // 提取封面
+//   const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
+//   if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
 
-  // 提取简介
-  const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
-  if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
+//   // 提取简介
+//   const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
+//   if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
 
-  // 构建表格
-  md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
+//   // 构建表格
+//   md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
 
-  rows.forEach((row) => {
-    // 歌名
-    const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
-    const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
-    const link = nameEl ? nameEl.href : '';
+//   rows.forEach((row) => {
+//     // 歌名
+//     const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
+//     const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
+//     const link = nameEl ? nameEl.href : '';
 
-    // 歌手 (可能有多个)
-    const artistEls = row.querySelectorAll('.songlist__artist a');
-    const artist = Array.from(artistEls).map(el => el.textContent).join(', ') || 'N/A';
+//     // 歌手 (可能有多个)
+//     const artistEls = row.querySelectorAll('.songlist__artist a');
+//     const artist = Array.from(artistEls).map(el => el.textContent).join(', ') || 'N/A';
     
-    // 专辑
-    const albumEl = row.querySelector('.songlist__album a');
-    const album = albumEl ? albumEl.textContent?.trim() : 'N/A';
+//     // 专辑
+//     const albumEl = row.querySelector('.songlist__album a');
+//     const album = albumEl ? albumEl.textContent?.trim() : 'N/A';
     
-    // 时长
-    const timeEl = row.querySelector('.songlist__time');
-    const time = timeEl ? timeEl.textContent?.trim() : 'N/A';
+//     // 时长
+//     const timeEl = row.querySelector('.songlist__time');
+//     const time = timeEl ? timeEl.textContent?.trim() : 'N/A';
 
-    // 拼接到 Markdown
-    md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
-  });
+//     // 拼接到 Markdown
+//     md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
+//   });
 
-  return md;
-}
+//   return md;
+// }
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 
