@@ -893,8 +893,15 @@ function SidePanel() {
         ) : (
            templates.map(tpl => {
              const Icon = getIconComponent(tpl.iconType);
+             // 为音乐合辑模板添加悬停提示
+             const tooltip = tpl.id === 'music-collection' ? '支持qq音乐、网易云音乐' : '';
              return (
-               <div key={tpl.id} className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} onClick={() => setSelectedTemplateId(tpl.id)}>
+               <div 
+                 key={tpl.id} 
+                 className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} 
+                 onClick={() => setSelectedTemplateId(tpl.id)}
+                 title={tooltip}
+               >
                  <Icon size={20} /> 
                  <span>{getTemplateName(tpl)}</span>
                </div>
