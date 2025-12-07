@@ -106,6 +106,14 @@ function SidePanel() {
       ChatStorage.updateConversationMessages(currentUrl, currentConversationId, updatedChatHistory);
     }
     
+    // 同时更新 globalState.structuredData 中的感想数据
+    const updatedStructuredData = {
+      ...structuredData,
+      notes: noteInput
+    };
+    setStructuredData(updatedStructuredData);
+    chrome.runtime.sendMessage({ type: 'UPDATE_STRUCTURED_DATA', payload: updatedStructuredData }).catch(() => {});
+    
     // 关闭输入框
     setEditingNoteIndex(null);
     setNoteInput('');
@@ -705,6 +713,7 @@ function SidePanel() {
         ...message.structuredData,
         templateId: templateIdToUse,
         url: tab.url || '',
+        notes: message.notes,
       };
 
       const response = await fetch('http://localhost:3000/api/save', {
