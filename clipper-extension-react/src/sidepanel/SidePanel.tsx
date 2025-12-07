@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon,Music
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -131,6 +131,44 @@ function SidePanel() {
 
     chrome.runtime.onMessage.addListener(handleVisionResult);
     return () => chrome.runtime.onMessage.removeListener(handleVisionResult);
+  }, []);
+
+  useEffect(() => {
+    const handleClipContentUpdate = (request: requestType) => {
+      if (request.type === 'CLIP_CONTENT_UPDATED') {
+        const payload = request.payload as ClipContentPayload;
+        if (payload) {
+          const nextContent = payload.text || payload.html || '';
+          if (nextContent) {
+            setContent(nextContent);
+            setStructuredData(null);
+            setView('clipper');
+          }
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleClipContentUpdate);
+    return () => chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+  }, []);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_LAST_CLIP' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn('获取最近一次剪藏失败:', chrome.runtime.lastError.message);
+        return;
+      }
+
+      if (response?.status === 'success' && response.data) {
+        const payload = response.data as ClipContentPayload;
+        const nextContent = payload.text || payload.html || '';
+        if (nextContent) {
+          setContent(nextContent);
+          setStructuredData(null);
+          setView('clipper');
+        }
+      }
+    });
   }, []);
 
   useEffect(() => {

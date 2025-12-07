@@ -17,7 +17,7 @@ let multiSelectionHighlights: HTMLElement[] = []; // 多选高亮元素
 let isGlobalActive: boolean = true; // 默认为开启
 let suspensionBall: HTMLElement | null = null;
 
-// ✨ [AI 识图] 缓存最近一次识图结果
+//  [AI 识图] 缓存最近一次识图结果
 let lastVisionResult: { text?: string; html?: string; structuredData?: unknown; raw?: string } | null = null;
 
 // =============【工具函数 (保持原样)】================
@@ -1231,19 +1231,19 @@ async function clipSelection() {
 
   hideToolbar();
   const payload = convertToClipPayload(selectedData);
+  void openSidebar(); // 立即触发侧边栏，保持用户手势
   await sendToBackground(payload);
   
   multipleSelections = [];
   updateMergeButton();
-  await openSidebar();
 }
 
 async function clipFullPage() {
   hideToolbar();
   const fullPageData = extractFullPageData();
   const payload = convertToClipPayload(fullPageData);
+  void openSidebar();
   await sendToBackground(payload);
-  await openSidebar();
 }
 
 function highlightSelection() {
@@ -1318,12 +1318,12 @@ async function mergeSelections() {
   };
   
   const payload = convertToClipPayload(mergedData);
+  void openSidebar();
   await sendToBackground(payload);
   
   multipleSelections = [];
   updateMergeButton();
   showToast(`已合并 ${count} 个选区`, 'success');
-  await openSidebar();
 }
 
 function clearMultiSelectionHighlights() {

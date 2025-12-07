@@ -8,6 +8,8 @@ export type MessageType =
  | 'TOGGLE_PANEL'
  | 'CAPTURE_AND_VISION'  // 截图AI识图
  | 'VISION_RESULT_READY' // AI识图结果已准备好
+ | 'CLIP_CONTENT_UPDATED'
+ | 'GET_LAST_CLIP'
  | 'CROP_IMAGE'          // 裁剪图片
  | 'GET_VISION_RESULT'   // 获取识图结果
  | string;
@@ -32,6 +34,8 @@ export type requestType =
  | {type: 'SAVE_TO_FEISHU', payload: {content: string, template: string, model: string, url: string}}
  | {type: 'OPEN_SIDEPANEL'}
  | { type: 'UPDATE_STRUCTURED_DATA';payload: StructuredDataType }
+ | { type: 'CLIP_CONTENT_UPDATED'; payload: ClipContentPayload }
+ | { type: 'GET_LAST_CLIP' }
  | { type: 'TOGGLE_PANEL' }
  | { type: 'CAPTURE_AND_VISION'; selection?: { x: number; y: number; width: number; height: number }; pageUrl?: string; isScreenshot?: boolean }
  | { type: 'VISION_RESULT_READY'; payload: ClipContentPayload }
@@ -45,6 +49,7 @@ export interface senderType {
     id?: number;
     url?: string;
     title?: string;
+    windowId?: number;
   };
   frameId?: number;
   id?: string; // extension id or content script id
