@@ -8,7 +8,7 @@ import {
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon,Music
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -45,6 +45,7 @@ function SidePanel() {
   const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+  const [singleExportStatus, setSingleExportStatus] = useState<{messageId: number | null, status: 'idle' | 'success', tableUrl?: string}>({messageId: null, status: 'idle'});
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string,open_id: string;} | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
   const [, setIsInitializing] = useState(false);
@@ -63,6 +64,11 @@ function SidePanel() {
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
@@ -103,6 +109,67 @@ function SidePanel() {
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // ✨ [AI 识图] 监听识图结果通知
+  useEffect(() => {
+    const handleVisionResult = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
+      if (request.type === 'VISION_RESULT_READY') {
+        // 更新内容显示
+        const payload = request.payload;
+        if (payload?.text || payload?.html) {
+          setContent(payload.text || payload.html || '');
+        }
+        if (payload && 'structuredData' in payload) {
+          const data = (payload as any).structuredData;
+          setStructuredData(data ?? null);
+        }
+        sendResponse({ status: 'success' });
+        return true;
+      }
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(handleVisionResult);
+    return () => chrome.runtime.onMessage.removeListener(handleVisionResult);
+  }, []);
+
+  useEffect(() => {
+    const handleClipContentUpdate = (request: requestType) => {
+      if (request.type === 'CLIP_CONTENT_UPDATED') {
+        const payload = request.payload as ClipContentPayload;
+        if (payload) {
+          const nextContent = payload.text || payload.html || '';
+          if (nextContent) {
+            setContent(nextContent);
+            setStructuredData(null);
+            setView('clipper');
+          }
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleClipContentUpdate);
+    return () => chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+  }, []);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_LAST_CLIP' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn('获取最近一次剪藏失败:', chrome.runtime.lastError.message);
+        return;
+      }
+
+      if (response?.status === 'success' && response.data) {
+        const payload = response.data as ClipContentPayload;
+        const nextContent = payload.text || payload.html || '';
+        if (nextContent) {
+          setContent(nextContent);
+          setStructuredData(null);
+          setView('clipper');
+        }
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const handleTabChange = async () => {
@@ -180,6 +247,41 @@ function SidePanel() {
     fetchTemplates();
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    setIsLoadingTools(true);
+
+    fetch('http://localhost:3000/api/tools', { signal: controller.signal })
+      .then(res => res.json())
+      .then(json => {
+        if (!isMounted) return;
+        if (json.code === 200 && Array.isArray(json.data)) {
+          setAvailableTools(json.data);
+          setToolError(null);
+        } else {
+          setToolError('无法加载工具');
+        }
+      })
+      .catch(error => {
+        if (!isMounted) return;
+        console.error('Failed to fetch MCP tools:', error);
+        setToolError('无法加载工具');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingTools(false);
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedToolIds((prev) => prev.filter((id) => availableTools.some((tool) => tool.id === id)));
+  }, [availableTools]);
+
   const getIconComponent = (type:templateType['iconType']) => {
     switch(type) {
       case 'text': return FileText;
@@ -230,6 +332,70 @@ function SidePanel() {
     setEditingConvId(null);
   };
 
+  const toggleToolSelection = (toolId: string) => {
+    setSelectedToolIds((prev) =>
+      prev.includes(toolId) ? prev.filter((id) => id !== toolId) : [...prev, toolId]
+    );
+  };
+
+  ///////////////////////////////////////【美化音乐卡片】（zyy）//////////////////////////////////
+  const MusicCard = (data: any) => {
+    const coverUrl = (data.cover && data.cover !== 'N/A') ? data.cover : 'https://via.placeholder.com/150?text=No+Cover';
+    
+    // ⚠️ 注意：下面的 HTML 字符串必须【顶格写】，不要有缩进！
+    // 否则 Markdown 会把它们识别为“代码块”而直接显示源码。
+    let musicHtml = `
+<div class="music-card-container">
+<div class="music-header">
+  <img src="${coverUrl}" class="music-cover" onerror="this.src='https://via.placeholder.com/80'" />
+  <div class="music-info">
+    <h3 class="music-title">${data.title || '未命名歌单'}</h3>
+    <div class="music-desc">${data.summary || '暂无简介'}</div>
+  </div>
+</div>
+<div class="music-list">`;
+
+    // 遍历歌曲生成列表项
+    if (data.tracks && Array.isArray(data.tracks)) {
+      data.tracks.forEach((t: any, i: number) => {
+        const href = (t.url && t.url !== 'N/A') ? `href="${t.url}" target="_blank"` : '';
+        const cursorStyle = href ? 'cursor: pointer;' : 'cursor: default;';
+        
+        // 这里的缩进没关系，因为在 HTML 标签内部
+        musicHtml += `
+<a ${href} class="track-item" style="${cursorStyle}">
+  <span class="track-index">${i + 1}</span>
+  <div class="track-main">
+    <span class="track-name">${t.name}</span>
+    <span class="track-artist">${t.artist} ${t.album && t.album !== 'N/A' ? `· ${t.album}` : ''}</span>
+  </div>
+  <div class="track-meta">
+    ${t.duration && t.duration !== 'N/A' ? t.duration : ''}
+  </div>
+</a>`;
+      });
+    }
+
+    musicHtml += `</div>`; // 闭合 music-list
+
+    // 标签区
+    if (data.tags && data.tags.length > 0) {
+      musicHtml += `<div class="music-tags">`;
+      data.tags.forEach((tag: string) => {
+        musicHtml += `<span class="music-tag">#${tag}</span>`;
+      });
+      musicHtml += `</div>`;
+    }
+
+    musicHtml += `</div>`; // 闭合 container
+
+    // 补充模型信息
+    musicHtml += `\n<div class="meta-info" style="margin-top:8px; text-align:right; opacity:0.6; font-size:11px;">Generated by ${selectedModel.name}</div>`;
+    
+    return musicHtml;
+  }
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
   //提交内容给后端返回结构化文本
   const handleStructure = async () => {
     if (!content) return alert(t('alertNoContent'));
@@ -261,48 +427,29 @@ function SidePanel() {
       
 
       chrome.runtime.sendMessage({ type: 'UPDATE_STRUCTURED_DATA', payload: data }).catch(() => {});
-      
-
-
+   
       setStatus('ready');
       setView('chat'); 
-      
-      // let displayText = `### ${data.title || t('analysisResult')}\n\n`;
-
-      // // 如果有封面图，显示封面
-      // if (data.cover && data.cover !== 'N/A') {
-      //   displayText += `![Cover](${data.cover})\n\n`;
-      // }
-
-      // displayText += `> ${data.summary || t('noSummary')}\n\n`;
-      
-      // // 🌟 新增：如果有 tracks 数组，生成 Markdown 表格
-      // if (data.tracks && Array.isArray(data.tracks) && data.tracks.length > 0) {
-      //   displayText += `| # | 歌名 | 歌手 | 时长 |\n|---|---|---|---|\n`;
-      //   data.tracks.forEach((track: any, index: number) => {
-      //     // 如果有链接，给歌名加上链接
-      //     const nameDisplay = track.url && track.url !== 'N/A' ? `[${track.name}](${track.url})` : track.name;
-      //     displayText += `| ${index + 1} | ${nameDisplay} | ${track.artist} | ${track.duration} |\n`;
-      //   });
-      //   displayText += `\n`;
-      // }
-      // if (data.tags?.length) displayText += `**${t('tags')}**: #${data.tags.join(' #')}\n`;
-      // displayText += `\n---\n<div class="meta-info">${t('model')}: ${selectedModel.name}</div>`;
-
+    
       if(data.templateId === 'summary') {
         // 渲染SummaryCard
         const storageData = SummaryCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
 
       }else if(data.templateId === 'video-summary') {
         // 渲染VideoCard
         const storageData = VideoCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
+      }else if (data.templateId === 'music-collection') {
+        // 音乐合辑的渲染逻辑（zyy）
+        const  musicHtml = MusicCard(data);
+        setChatHistory(prev => [...prev, { role: 'ai', text: musicHtml, templateId: selectedTemplateId, structuredData: data }]);
       }else if(selectedTemplateId === 'tech-doc') {
         // 渲染TechDocCard
         const storageData = TechDocCard(data)
-        setChatHistory(prev => [...prev, { role: 'ai', text: storageData }]);
+        setChatHistory(prev => [...prev, { role: 'ai', text: storageData, templateId: selectedTemplateId, structuredData: data }]);
       }
+
     } catch (error: unknown) {
       setStatus('ready');
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -322,10 +469,20 @@ function SidePanel() {
       const res = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: currentMsg, model: selectedModel.id, context: structuredData || content })
+        body: JSON.stringify({
+          message: currentMsg,
+          model: selectedModel.id,
+          context: structuredData || content,
+          tools: selectedToolIds,
+        })
       });
       const data = await res.json();
-      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: data.reply || t('noResponse') }));
+      setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ 
+        role: 'ai', 
+        text: data.reply || t('noResponse'), 
+        templateId: structuredData?.templateId,
+        structuredData: structuredData // 存储完整的结构化信息
+      }));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setChatHistory(prev => prev.filter(m => !m.isLoading).concat({ role: 'ai', text: `${t('error')}: ${errorMessage}` }));
@@ -417,9 +574,9 @@ function SidePanel() {
         throw new Error(json.error);
       }
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert(`初始化失败: ${e.message}`);
+      alert(`初始化失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsInitializing(false);
     }
@@ -444,7 +601,10 @@ function SidePanel() {
 
     setIsSaving(true);
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });//获取当前tab
+      
+
+      // // 🟢 [核心修改] 旧版逻辑，已废弃
 
       // const currentTemplate = selectedTemplateId || 'summary';
       // const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
@@ -466,15 +626,77 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
-      await fetch('http://localhost:3000/api/save', {
+      const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
+      const result = await response.json();
+      
+      if (result.tableUrl) {
+        console.log('飞书表格链接:', result.tableUrl);
+      }
+      
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error: unknown) {
         console.error('Export error:', error);
+        alert(t('alertExportFail'));
+      } 
+    finally { setIsSaving(false); }
+  };
+
+  // 导出单条AI消息到飞书
+  const handleExportSingleMessage = async (message: ChatMessage, messageIndex: number) => {
+    if (!message.templateId) return alert('此消息没有关联的模板信息');
+    if (!userInfo || !userInfo.token) return alert(t('notConnected'));
+
+    if (userConfig && userConfig.userId !== userInfo.open_id) {
+      alert(`配置冲突！\n当前配置属于：${userConfig.name}\n当前登录用户：${userInfo.name}\n\n系统将自动重新初始化...`);
+      await checkAndInitConfig(userInfo); // 强制重新初始化
+      return;
+    }
+
+    if (!userConfig) {
+       await checkAndInitConfig(userInfo);
+       return;
+    }
+
+    setIsSaving(true);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // 使用消息中存储的模板ID
+      const templateIdToUse = message.templateId;
+
+      // 根据 ID 去配置里查表
+      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+
+      console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
+
+      // 直接使用消息中存储的完整结构化信息
+      const exportData = {
+        ...message.structuredData,
+        templateId: templateIdToUse,
+        url: tab.url || '',
+      };
+
+      const response = await fetch('http://localhost:3000/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+      });
+      const result = await response.json();
+      
+      // 设置单条消息导出成功状态
+      setSingleExportStatus({messageId: messageIndex, status: 'success', tableUrl: result.tableUrl});
+      
+      // 3秒后重置状态
+      setTimeout(() => {
+        setSingleExportStatus({messageId: null, status: 'idle'});
+      }, 3000);
+    } catch (error: unknown) {
+        console.error('Single message export error:', error);
         alert(t('alertExportFail'));
       } 
     finally { setIsSaving(false); }
@@ -679,16 +901,94 @@ function SidePanel() {
       )}
       {chatHistory.map((msg, i) => (
         <div key={i} className={`message ${msg.role}`}>
-          {msg.role === 'ai' ? <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown> : msg.text}
+          {msg.role === 'ai' ? (
+            <div className="ai-message-container">
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
+              <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg, i)}>
+                <CloudUpload size={16} />
+                <span>{t('export')}</span>
+              </button>
+            </div>
+          ) : msg.text}
         </div>
       ))}
+      
+      {/* 导出成功弹窗 */}
+      {singleExportStatus.status === 'success' && singleExportStatus.tableUrl && (
+        <div className="export-success-popup">
+          <div className="popup-content">
+            <CheckCircle size={48} className="success-icon" />
+            <h3>{t('exportSuccess')}</h3>
+            <p>{t('exportSuccessDesc')}</p>
+            {singleExportStatus.tableUrl && (
+              <a 
+                href={singleExportStatus.tableUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="table-link"
+              >
+                {t('viewTable')}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
       <div ref={chatEndRef} style={{height:'1px'}}/>
 
       <div className="input-floating-area">
-         <div className="chat-input-wrapper">
-            <input className="chat-input" value={userNote} onChange={(e) => setUserNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={t('inputPlaceholder')} autoFocus />
+        <div className="chat-input-stack">
+          <div className="mcp-tool-toggle">
+            <button
+              type="button"
+              className="mcp-tool-button"
+              onClick={() => setShowToolPicker((prev) => !prev)}
+            >
+              <Sparkles size={16} />
+              <span>MCP 工具</span>
+              {selectedToolIds.length > 0 && <span className="mcp-tool-badge">{selectedToolIds.length}</span>}
+              {isLoadingTools && <Loader2 className="spin" size={14} />}
+              <ChevronDown size={16} className={showToolPicker ? 'open' : ''} />
+            </button>
+            {showToolPicker && (
+              <div className="mcp-tool-panel">
+                {isLoadingTools ? (
+                  <div className="mcp-tool-panel-empty">加载中...</div>
+                ) : availableTools.length === 0 ? (
+                  <div className="mcp-tool-panel-empty">暂无可用工具</div>
+                ) : (
+                  availableTools.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className={`mcp-tool-item ${selectedToolIds.includes(tool.id) ? 'active' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedToolIds.includes(tool.id)}
+                        onChange={() => toggleToolSelection(tool.id)}
+                      />
+                      <div className="mcp-tool-item-body">
+                        <div className="mcp-tool-item-title">{tool.name}</div>
+                        <div className="mcp-tool-item-desc">{tool.description}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+                {toolError && <div className="mcp-tool-panel-error">{toolError}</div>}
+              </div>
+            )}
+          </div>
+          <div className="chat-input-wrapper">
+            <input
+              className="chat-input"
+              value={userNote}
+              onChange={(e) => setUserNote(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder={t('inputPlaceholder')}
+              autoFocus
+            />
             <button className="send-btn-round" onClick={handleSend}><Send size={20} /></button>
-         </div>
+          </div>
+        </div>
       </div>
     </div>
   );

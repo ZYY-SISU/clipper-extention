@@ -1,10 +1,13 @@
 // 聊天记录本地存储
+import type { SummaryType, VideoType, TechDocType } from "../types/index"
 
 // 聊天记录接口
 export interface ChatMessage {
   role: string;
   text: string;
   isLoading?: boolean;
+  templateId?: string;
+  structuredData?: SummaryType | VideoType | TechDocType | null; // 存储完整的结构化信息
 }
 
 // 对话接口

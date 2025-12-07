@@ -6,9 +6,10 @@ import cors from 'cors';
 
 // 引入服务
 import { analyzeText } from './services/aiService';
-import { processContent, processChat } from './services/ai_handler';//胡同学的ai模块
+import { processContent, processChat, processVision } from './services/ai_handler';//胡同学的ai模块
 import { addRecord , initUserBase} from './services/feishuService'; 
 import { getUserInfo } from './services/authService';
+import { listMcpTools } from './services/mcpTools';
 // 引入拆分出来的文件
 import { DEFAULT_TEMPLATES } from './defaultTemplates';
 
@@ -27,8 +28,9 @@ let userTemplates: TemplateConfig[] = [];
 
 // 2. 中间件，允许跨域：这对于浏览器插件至关重要
 app.use(cors()); 
-// 解析 JSON 请求体
-app.use(express.json());
+// 解析 JSON 请求体 - 增加限制以支持截图的 base64 数据
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
 
@@ -46,6 +48,14 @@ app.get('/api/templates', (req: Request, res: Response) => {
   res.json({
     code: 200,
     data: allTemplates
+  });
+});
+
+app.get('/api/tools', (_req: Request, res: Response) => {
+  const tools = listMcpTools();
+  res.json({
+    code: 200,
+    data: tools,
   });
 });
 
@@ -128,7 +138,7 @@ app.post('/api/analyze', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
   try {
     //  接收 context 参数
-    const { message, model, context } = req.body;
+    const { message, model, context, tools } = req.body;
 
     if (!message) {
       res.status(400).json({ error: '消息内容不能为空' });
@@ -138,7 +148,7 @@ app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
     console.log(`💬 收到对话请求: ${message.substring(0, 10)}... (含上下文: ${!!context})`);
     
     // 把 context 传给处理函数
-    const reply = await processChat(message, model, context);
+    const reply = await processChat(message, model, context, Array.isArray(tools) ? tools : []);
     
     res.json({ reply });
 
@@ -153,12 +163,15 @@ app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
   try {
     // 🟢 从前端接收所有必要信息
-    const { 
-      // 数据内容
-      title, summary, tags, sentiment, url,
-      up_name, play_count, like_count, coin_count, collect_count,
-      userAccessToken, appToken, tableId    
-    } = req.body;
+    // const { 
+    //   // 数据内容
+    //   title, summary, tags, sentiment, url,
+    //   up_name, play_count, like_count, coin_count, collect_count,
+    //   userAccessToken, appToken, tableId    
+    // } = req.body;
+
+    const payload = req.body;
+    const { userAccessToken, appToken, tableId } = payload;
     console.log('当前tableId:', tableId);
 
     // 简单的校验
@@ -170,14 +183,19 @@ app.post('/api/save', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ error: '未配置目标表格' });
       return;
     }
+    console.log(`📥 收到保存请求，包含字段: ${Object.keys(payload).join(', ')}`);
+    
+    if (payload.tracks) {
+      console.log(`🎵 检测到音乐列表，共 ${payload.tracks.length} 首`);
+    }
 
-    // 调用服务
-    await addRecord(
-      { title, summary, tags, sentiment, url, up_name, play_count, like_count, coin_count, collect_count }, 
-      { userAccessToken, appToken, tableId }
-    );
+    // 3. 调用服务 (直接把 payload 传进去，Service 层会自己判断怎么处理)
+    await addRecord(payload, { userAccessToken, appToken, tableId });
 
-    res.json({ success: true, message: '已同步到您的飞书' });
+    // 对应表格链接
+    const tableUrl = `https://bytedance.feishu.cn/base/${appToken}?table=${tableId}`;
+
+    res.json({ success: true, message: '已同步到您的飞书', tableUrl });
 
   } catch (error: any) {
     console.error(error);
@@ -205,8 +223,120 @@ app.post('/api/init-feishu', async (req: Request, res: Response): Promise<void> 
   }
 });
 
+// 3.4 AI 识图接口
+app.post('/api/vision', async (req: Request, res: Response) => {
+  try {
+    const { images, pageUrl, isScreenshot, model } = req.body;
+
+    if (!images || !Array.isArray(images) || images.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: '请提供至少一张图片' 
+      });
+    }
+
+    // 根据页面类型构造不同的提示词
+    let prompt = '';
+    if (isScreenshot) {
+      // 视频类页面的提示词
+      prompt = `分析这个截图内容，提取关键信息并以结构化 JSON 格式返回。请重点识别：
+- 标题/主题
+- 作者/创作者
+- 描述/摘要
+- 关键数据（播放量、点赞数等）
+- 标签/分类
+- 其他相关信息
+
+请直接返回 JSON 格式，无需其他说明。格式示例：
+\`\`\`json
+{
+  "title": "视频标题",
+  "author": "作者名",
+  "description": "视频描述",
+  "stats": {
+    "views": "播放量",
+    "likes": "点赞数"
+  },
+  "tags": ["标签1", "标签2"],
+  "url": "${pageUrl || ''}"
+}
+\`\`\``;
+    } else {
+      // 图片类页面的提示词
+      prompt = `分析这张图片内容，提取关键信息并以结构化 JSON 格式返回。请识别：
+- 图片主题
+- 可见文字内容
+- 主要元素/对象
+- 场景描述
+- 其他相关信息
+
+请直接返回 JSON 格式，无需其他说明。格式示例：
+\`\`\`json
+{
+  "subject": "图片主题",
+  "text_content": "识别到的文字",
+  "elements": ["元素1", "元素2"],
+  "scene": "场景描述",
+  "url": "${pageUrl || ''}"
+}
+\`\`\``;
+    }
+
+    // 调用 AI 识图服务
+    const reply = await processVision(
+      images[0].dataUrl, 
+      prompt, 
+      model || 'gpt-4o-mini'
+    );
+
+    const cleanedReply = stripCodeFences(reply);
+
+    // 尝试提取 JSON
+    let structuredData = null;
+    try {
+      // 尝试匹配 markdown 代码块中的 JSON
+      const jsonMatch = reply.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        structuredData = JSON.parse(jsonMatch[1]);
+      } else {
+        // 尝试直接匹配 JSON 对象
+        const directJsonMatch = reply.match(/\{[\s\S]*\}/);
+        if (directJsonMatch) {
+          structuredData = JSON.parse(directJsonMatch[0]);
+        }
+      }
+    } catch (parseError) {
+      console.warn('JSON 解析失败，返回原始文本', parseError);
+    }
+
+    res.json({ 
+      success: true, 
+      data: structuredData || { raw: cleanedReply },
+      raw: cleanedReply
+    });
+
+  } catch (error: any) {
+    console.error('AI 识图错误:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // 4. 启动服务
 app.listen(PORT, () => {
   console.log(`\n⚡️ 服务器正在运行: http://localhost:${PORT}`);
   console.log(`🔓 跨域 CORS 已开启`);
 });
+
+function stripCodeFences(text: string): string {
+  let result = text.trim();
+  if (result.startsWith('```')) {
+    result = result.replace(/^```(?:[a-zA-Z0-9_-]+)?\s*/i, '');
+  }
+  if (result.endsWith('```')) {
+    result = result.replace(/```$/i, '');
+  }
+  return result.trim();
+}

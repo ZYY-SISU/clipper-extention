@@ -70,6 +70,9 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     alertInitFail: "初始化失败",
     alertInitSuccess: "🎉 知识库初始化完成！",
     alertExportFail: "导出失败，请检查控制台",
+    exportSuccess: "导出成功",
+    exportSuccessDesc: "已成功导出到飞书表格",
+    viewTable: "查看表格",
   },
   'en': {
     title: "Smart Clipper",
@@ -138,5 +141,8 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     alertInitFail: "Initialization failed",
     alertInitSuccess: "🎉 Initialized!",
     alertExportFail: "Export failed",
+    exportSuccess: "Export successful",
+    exportSuccessDesc: "Successfully exported to Feishu table",
+    viewTable: "View table",
   }
 };
