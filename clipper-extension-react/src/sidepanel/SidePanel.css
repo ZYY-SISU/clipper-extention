@@ -44,6 +44,32 @@
   --nav-bg: rgba(19, 19, 20, 0.95);
 }
 
+        /* 深色模式下的代码块优化 */
+[data-theme="dark"] .message.ai pre {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .message.ai code {
+  color: #f87171;
+  background: #0f172a;
+}
+
+/* 深色模式下的表格优化 */
+[data-theme="dark"] .message.ai table {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .message.ai th {
+  background: #0f172a;
+}
+
+/* 深色模式下的引用优化 */
+[data-theme="dark"] .message.ai blockquote {
+  background: rgba(138, 180, 248, 0.1);
+  border-left-color: var(--gemini-blue);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -459,31 +485,157 @@ body {
   transform: translateY(0);
 }
 
-.message.ai h1, .message.ai h2 {
-  font-size: 17px; 
+.message.ai h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 30px 0 15px;
+  color: var(--text-primary);
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.message.ai h2 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 25px 0 12px;
+  color: var(--text-primary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.message.ai h3 {
+  font-size: 17px;
+  font-weight: 600;
   margin: 20px 0 10px;
   color: var(--text-primary);
 }
 
-.message.ai ul {
-  padding-left: 20px; 
-  margin-bottom: 12px;
+.message.ai h4, .message.ai h5, .message.ai h6 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+  color: var(--text-primary);
+}
+
+.message.ai ul, .message.ai ol {
+  padding-left: 24px;
+  margin: 12px 0;
+}
+
+.message.ai li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.message.ai li ul, .message.ai li ol {
+  margin-top: 6px;
+  margin-bottom: 0;
 }
 
 .message.ai code {
-  background: var(--gemini-surface); 
+  background: var(--gemini-surface);
   padding: 2px 6px;
   border-radius: 6px;
   font-family: "Roboto Mono", monospace;
   font-size: 0.9em;
   color: #ef4444;
+  white-space: pre-wrap;
+}
+
+.message.ai pre {
+  background: var(--gemini-surface);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+}
+
+.message.ai pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .message.ai blockquote {
-  border-left: 3px solid var(--border-color);
-  margin: 12px 0;
-  padding-left: 16px;
+  border-left: 4px solid var(--gemini-blue);
+  margin: 16px 0;
+  padding: 12px 16px;
+  background: var(--gemini-blue-soft);
+  border-radius: 0 8px 8px 0;
   color: var(--text-secondary);
+  font-style: italic;
+}
+
+.message.ai table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.message.ai th, .message.ai td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.message.ai th {
+  background: var(--gemini-surface);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.message.ai tr:hover {
+  background: var(--gemini-surface-hover);
+}
+
+.message.ai a {
+  color: var(--gemini-blue);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.message.ai a:hover {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+
+.message.ai hr {
+  border: none;
+  border-top: 2px solid var(--border-color);
+  margin: 24px 0;
+}
+
+.message.ai strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.message.ai em {
+  font-style: italic;
+  color: var(--text-primary);
+}
+
+.message.ai img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 12px 0;
+  border: 1px solid var(--border-color);
+}
+
+.message.ai input[type="checkbox"] {
+  margin-right: 8px;
+  transform: scale(1.1);
+}
+
+.message.ai del {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+  opacity: 0.8;
 }
 
 /* 悬浮输入框 */
