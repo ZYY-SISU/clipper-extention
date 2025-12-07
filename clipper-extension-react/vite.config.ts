@@ -48,6 +48,7 @@ const manifest = defineManifest({
     type: "module" // 使用 ES Module 语法
   },
   host_permissions: [
+    "<all_urls>",
     "http://localhost/*", 
     "http://127.0.0.1/*",
     "https://api.siliconflow.cn/*"

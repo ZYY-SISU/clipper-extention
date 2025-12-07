@@ -396,21 +396,95 @@ body {
    ============================================================================= */
 .chat-view {
   padding: 24px 20px; padding-bottom: 150px;
-  display: flex; flex-direction: column; gap: 24px; min-height: 100%;
+  display: flex; flex-direction: column; gap: 16px; min-height: 100%;
 }
 
-.message { font-size: 15px; line-height: 1.7; max-width: 96%; }
+.message {
+  font-size: 15px; line-height: 1.7; 
+  max-width: 96%;
+  padding: 16px 20px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
 .message.user {
   align-self: flex-end;
   background: var(--gemini-surface);
   color: var(--text-primary);
-  padding: 12px 18px; border-radius: 24px 24px 4px 24px;
+  border-radius: 24px 24px 4px 24px;
+  border: 1px solid var(--border-color);
 }
-.message.ai { align-self: flex-start; width: 100%; color: var(--text-primary); }
-.message.ai h1, .message.ai h2 { font-size: 17px; margin: 20px 0 10px; color: var(--text-primary); }
-.message.ai ul { padding-left: 20px; margin-bottom: 12px; }
-.message.ai code { background: var(--gemini-surface); padding: 2px 6px; border-radius: 6px; font-family: "Roboto Mono", monospace; font-size: 0.9em; color: #ef4444; }
-.message.ai blockquote { border-left: 3px solid var(--border-color); margin: 0; padding-left: 16px; color: var(--text-secondary); }
+
+.message.ai {
+  align-self: flex-start;
+  width: 100%;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 24px 24px 24px 4px;
+}
+
+.ai-message-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.export-single-btn {
+  align-self: flex-end;
+  margin-top: 12px;
+  padding: 6px 12px;
+  background: var(--gemini-blue-soft);
+  color: var(--gemini-blue);
+  border: none;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.export-single-btn:hover {
+  background: var(--gemini-blue);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+}
+
+.export-single-btn:active {
+  transform: translateY(0);
+}
+
+.message.ai h1, .message.ai h2 {
+  font-size: 17px; 
+  margin: 20px 0 10px;
+  color: var(--text-primary);
+}
+
+.message.ai ul {
+  padding-left: 20px; 
+  margin-bottom: 12px;
+}
+
+.message.ai code {
+  background: var(--gemini-surface); 
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: "Roboto Mono", monospace;
+  font-size: 0.9em;
+  color: #ef4444;
+}
+
+.message.ai blockquote {
+  border-left: 3px solid var(--border-color);
+  margin: 12px 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+}
 
 /* 悬浮输入框 */
 .input-floating-area {
@@ -421,6 +495,14 @@ body {
   z-index: 50;
   display: flex; justify-content: center;
   transition: background 0.3s ease;
+}
+
+.chat-input-stack {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .chat-input-wrapper {
@@ -448,6 +530,109 @@ body {
   transition: 0.2s; flex-shrink: 0;
 }
 .send-btn-round:hover { background: var(--gemini-blue-soft); }
+
+.mcp-tool-toggle {
+  position: relative;
+}
+
+.mcp-tool-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 24px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.mcp-tool-button:hover {
+  border-color: var(--gemini-blue);
+  color: var(--text-primary);
+}
+
+.mcp-tool-button .open {
+  transform: rotate(180deg);
+  transition: transform 0.2s ease;
+}
+
+.mcp-tool-badge {
+  background: var(--gemini-blue-soft);
+  color: var(--gemini-blue);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mcp-tool-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  width: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.mcp-tool-panel-empty,
+.mcp-tool-panel-error {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 4px;
+}
+
+.mcp-tool-panel-error {
+  color: var(--danger-color);
+}
+
+.mcp-tool-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  align-items: flex-start;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.mcp-tool-item + .mcp-tool-item {
+  margin-top: 6px;
+}
+
+.mcp-tool-item input {
+  margin-top: 4px;
+}
+
+.mcp-tool-item.active {
+  border-color: var(--gemini-blue);
+  background: var(--gemini-blue-soft);
+}
+
+.mcp-tool-item-body {
+  flex: 1;
+}
+
+.mcp-tool-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mcp-tool-item-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
 
 /* =============================================================================
    底部模型胶囊
@@ -509,6 +694,82 @@ body {
   content: ""; position: absolute; top: 0;
   width: 40px; height: 3px;
   background: var(--gemini-blue); border-radius: 0 0 4px 4px;
+}
+
+/* 导出成功弹窗样式 */
+.export-success-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.popup-content {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  max-width: 320px;
+  width: 90%;
+  animation: slideUp 0.3s ease;
+}
+
+.success-icon {
+  color: #34a853;
+  margin-bottom: 12px;
+  width: 36px;
+  height: 36px;
+}
+
+.popup-content h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.popup-content p {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.table-link {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--gemini-blue);
+  color: white;
+  border-radius: 5px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.table-link:hover {
+  background: rgba(26, 115, 232, 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* Animations */

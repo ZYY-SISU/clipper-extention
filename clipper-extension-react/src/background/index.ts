@@ -1,12 +1,78 @@
 // 类型定义引入
-import type{ senderType, sendResponseType, templateType, requestType, StructuredDataType } from '../types/index';
+import type{ senderType, sendResponseType, templateType, requestType, StructuredDataType, ClipContentPayload } from '../types/index';
 
 // 全局状态存储
 const globalState = {
-  content: '',
+  latestClip: null as ClipContentPayload | null,
   structuredData: null as StructuredDataType | null,
   templates: [] as templateType[],
   isLoadingTemplates: true
+}
+
+// 【AI 识图处理函数】
+async function handleVisionCapture(request: Extract<requestType, { type: 'CAPTURE_AND_VISION' }>, sendResponse: sendResponseType) {
+  try {
+    const { pageUrl, selection, isScreenshot } = request;
+    
+    console.log('【Background】开始处理 AI 识图:', { pageUrl, selection, isScreenshot });
+    
+    // 1. 获取当前标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) {
+      throw new Error('无法获取当前标签页');
+    }
+
+    // 2. 截取整个可见区域
+    const fullScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
+    console.log('【Background】截图完成，大小:', fullScreenshot.length);
+
+    let finalDataUrl = fullScreenshot;
+
+    // 3. 如果有选择区域，发送给 content script 进行裁剪
+    if (selection) {
+      console.log('【Background】发送裁剪请求:', selection);
+      const cropResponse = await chrome.tabs.sendMessage(tab.id, {
+        type: 'CROP_IMAGE',
+        dataUrl: fullScreenshot,
+        selection: selection
+      });
+
+      if (cropResponse?.status === 'success') {
+        finalDataUrl = cropResponse.croppedDataUrl;
+        console.log('【Background】裁剪完成');
+      } else {
+        throw new Error(cropResponse?.error || '图像裁剪失败');
+      }
+    }
+
+    // 4. 发送到后端进行 AI 识别
+    console.log('【Background】发送到后端 API...');
+    const response = await fetch('http://localhost:3000/api/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        images: [{ dataUrl: finalDataUrl }],
+        pageUrl: pageUrl,
+        isScreenshot: isScreenshot
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('【Background】服务器错误:', response.status, errorText);
+      throw new Error(`服务器错误: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('【Background】AI 识别成功:', result);
+    sendResponse({ status: 'success', result });
+  } catch (error) {
+    console.error('【Background】AI 识图失败:', error);
+    sendResponse({ 
+      status: 'error', 
+      error: error instanceof Error ? error.message : '未知错误' 
+    });
+  }
 }
 
 
@@ -36,74 +102,72 @@ async function init() {
 }
 
 // 消息处理函数
-async function handleMessage(request: requestType, _: senderType, sendResponse: sendResponseType) {
+function handleMessage(request: requestType, sender: senderType, sendResponse: sendResponseType) {
   console.log('【Background】 收到消息:', request);
 
   switch(request.type) {
     // 【接收剪藏内容】
     case 'CLIP_CONTENT':
-      globalState.content = request.payload?.text || request.payload?.html || '';
+      globalState.latestClip = request.payload || null;
       sendResponse({ status: 'success', message: '内容已接收' });
+      chrome.runtime.sendMessage({ type: 'CLIP_CONTENT_UPDATED', payload: request.payload }).catch(() => {});
       return true;
+        case 'GET_LAST_CLIP':
+          sendResponse({ status: 'success', data: globalState.latestClip });
+          return true;
     // 【打开侧边栏】
     // 根据 Chrome API 文档：https://developer.chrome.com/docs/extensions/reference/api/sidePanel
     // chrome.sidePanel.open() 只能在响应用户操作时调用
     // 从 content script 发送消息到这里时，用户手势上下文应该仍然有效
-    case 'OPEN_SIDEPANEL':
-      try {
-        // 查询当前活动标签页
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        
-        if (!tab) {
-          console.warn('【Background】⚠️ 无法获取当前标签页');
-          sendResponse({ status: 'error', message: '无法获取当前标签页' });
-          return true;
-        }
+    case 'OPEN_SIDEPANEL': {
+      const tabId = sender?.tab?.id;
+      const windowId = sender?.tab?.windowId;
 
-        // 优先使用 tabId（推荐，针对特定标签页）
-        if (tab.id !== undefined && tab.id !== null) {
-          console.log('【Background】准备打开侧边栏，标签页ID:', tab.id);
-          try {
-            await chrome.sidePanel.open({ tabId: tab.id });
-            console.log('【Background】✅ 侧边栏已打开，标签页ID:', tab.id);
-            sendResponse({ status: 'success', message: '侧边栏已打开' });
-            return true;
-          } catch (openError: unknown) {
-            const errorMessage = openError instanceof Error ? openError.message : '未知错误';
-            console.warn('【Background】使用 tabId 打开失败，尝试 windowId:', errorMessage);
-            // 如果使用 tabId 失败，尝试使用 windowId
-            if (tab.windowId !== undefined && tab.windowId !== null) {
-              await chrome.sidePanel.open({ windowId: tab.windowId });
-              console.log('【Background】✅ 侧边栏已打开（使用 windowId），窗口ID:', tab.windowId);
-              sendResponse({ status: 'success', message: '侧边栏已打开' });
-              return true;
-            } else {
-              throw openError;
-            }
-          }
-        } 
-        // 如果无法获取 tabId，使用 windowId
-        else if (tab.windowId !== undefined && tab.windowId !== null) {
-          console.log('【Background】使用 windowId 打开侧边栏，窗口ID:', tab.windowId);
-          await chrome.sidePanel.open({ windowId: tab.windowId });
-          console.log('【Background】✅ 侧边栏已打开，窗口ID:', tab.windowId);
-          sendResponse({ status: 'success', message: '侧边栏已打开' });
-          return true;
-        } else {
-          throw new Error('无法获取当前标签页ID或窗口ID');
-        }
-      } catch (error: unknown) {
-        console.error('【Background】❌ 打开侧边栏失败:', error);
-        // 提供更详细的错误信息
+      const handleError = (error: unknown) => {
         const errorMsg = error instanceof Error ? error.message || '打开侧边栏失败' : '未知错误';
-        console.error('【Background】错误详情:', {
-          message: errorMsg,
-          name: error instanceof Error ? error.name : '未知错误',
-          stack: error instanceof Error ? error.stack : '无栈信息'
-        });
+        console.error('【Background】❌ 打开侧边栏失败:', errorMsg);
         sendResponse({ status: 'error', message: errorMsg });
+      };
+
+      const tryOpenWithTab = (id: number) => {
+        chrome.sidePanel.open({ tabId: id })
+          .then(() => {
+            console.log('【Background】✅ 侧边栏已打开，标签页ID:', id);
+            sendResponse({ status: 'success', message: '侧边栏已打开' });
+          })
+          .catch((error) => {
+            if (windowId !== undefined) {
+              chrome.sidePanel.open({ windowId })
+                .then(() => {
+                  console.log('【Background】✅ 侧边栏已打开（使用 windowId），窗口ID:', windowId);
+                  sendResponse({ status: 'success', message: '侧边栏已打开' });
+                })
+                .catch(handleError);
+            } else {
+              handleError(error);
+            }
+          });
+      };
+
+      if (tabId !== undefined) {
+        tryOpenWithTab(tabId);
+        return true;
       }
-      return true; // 保持消息通道开放，等待异步操作完成
+
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        if (tab?.id !== undefined) {
+          tryOpenWithTab(tab.id);
+        } else if (tab?.windowId !== undefined) {
+          chrome.sidePanel.open({ windowId: tab.windowId })
+            .then(() => sendResponse({ status: 'success', message: '侧边栏已打开' }))
+            .catch(handleError);
+        } else {
+          handleError(new Error('无法获取当前标签页信息'));
+        }
+      }).catch(handleError);
+
+      return true;
+    }
     // 【获取模板列表】
     case 'FETCH_TEMPLATES':
       fetchTemplates().then(templates => {
@@ -137,6 +201,19 @@ async function handleMessage(request: requestType, _: senderType, sendResponse: 
       console.log('【Background】✅ 已更新结构化数据:', request.payload.title);
       sendResponse({ status: 'success' });
       return true;
+
+    // 【AI 识图】截图并识别
+    case 'CAPTURE_AND_VISION':
+      if (request.type === 'CAPTURE_AND_VISION') {
+        // 立即调用异步函数，不等待完成
+        handleVisionCapture(request, sendResponse).catch(err => {
+          console.error('【Background】handleVisionCapture 未捕获的错误:', err);
+          sendResponse({ status: 'error', error: '处理失败' });
+        });
+      } else {
+        sendResponse({ status: 'error', error: '消息类型错误' });
+      }
+      return true; // 保持消息通道开启
 
     default:
       sendResponse({status: 'error', message: '未知的消息类型'})

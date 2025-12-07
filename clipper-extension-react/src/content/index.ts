@@ -17,6 +17,9 @@ let multiSelectionHighlights: HTMLElement[] = []; // 多选高亮元素
 let isGlobalActive: boolean = true; // 默认为开启
 let suspensionBall: HTMLElement | null = null;
 
+//  [AI 识图] 缓存最近一次识图结果
+let lastVisionResult: { text?: string; html?: string; structuredData?: unknown; raw?: string } | null = null;
+
 // =============【工具函数 (保持原样)】================
 function resolveUrl(url: string, baseUrl: string = window.location.href): string {
   try {
@@ -235,6 +238,12 @@ function createSuspensionBall(): void {
   const toggleBtn = document.createElement('div');
   toggleBtn.className = 'sc-sub-action sc-action-toggle';
   toggleBtn.title = '切换静默模式';
+  toggleBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+    </svg>
+  `;
   
   // 4. 卫星按钮：反馈 (上方)
   const feedbackBtn = document.createElement('div');
@@ -508,6 +517,11 @@ function createToolbar(): HTMLElement {
       left: 100% !important; top: 0 !important; width: 40px !important; height: 100% !important;
       background: transparent !important;
     }
+    .sc-action-vision::after {
+      content: '' !important; position: absolute !important;
+      right: 100% !important; top: 0 !important; width: 40px !important; height: 100% !important;
+      background: transparent !important;
+    }
 
     /* 悬停 Wrapper 显示卫星 */
     #sc-suspension-wrapper:hover .sc-sub-action {
@@ -518,6 +532,7 @@ function createToolbar(): HTMLElement {
     /* 卫星弹出位置 */
     #sc-suspension-wrapper:hover .sc-action-feedback { transform: translateY(-55px) scale(1) !important; }
     #sc-suspension-wrapper:hover .sc-action-toggle { transform: translateX(-55px) scale(1) !important; }
+    #sc-suspension-wrapper:hover .sc-action-vision { transform: translateX(55px) scale(1) !important; }
 
     /* 卫星悬停态 */
     .sc-sub-action:hover {
@@ -526,6 +541,7 @@ function createToolbar(): HTMLElement {
     /* 修正悬停时位置保持，防止回弹 */
     #sc-suspension-wrapper:hover .sc-action-feedback:hover { transform: translateY(-55px) scale(1.1) !important; }
     #sc-suspension-wrapper:hover .sc-action-toggle:hover { transform: translateX(-55px) scale(1.1) !important; }
+    #sc-suspension-wrapper:hover .sc-action-vision:hover { transform: translateX(55px) scale(1.1) !important; }
     
     .sc-action-toggle.is-on { color: #3b82f6 !important; }
 
@@ -635,6 +651,7 @@ function createToolbar(): HTMLElement {
       opacity: 0 !important; transition: opacity 0.15s ease !important; z-index: 2147483648 !important;
       padding-top: 18px !important;
     }
+    #smart-clipper-toolbar .sc-toolbar-group.submenu-open .sc-submenu { display: flex !important; opacity: 1 !important; }
     #smart-clipper-toolbar .sc-toolbar-group:hover .sc-submenu,
     #smart-clipper-toolbar .sc-submenu:hover { display: flex !important; opacity: 1 !important; }
     
@@ -701,7 +718,39 @@ function createToolbar(): HTMLElement {
       </svg>
       <span>侧栏</span>
     </button>
+    <button id="sc-ai-vision" title="AI 识图">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+      <span>AI识图</span>
+    </button>
   `;
+
+  const clipperGroup = toolbarElement.querySelector('.sc-toolbar-group');
+  const submenu = clipperGroup?.querySelector('.sc-submenu') as HTMLElement | null;
+  if (clipperGroup && submenu) {
+    let hideTimer: number | null = null;
+    const showSubmenu = () => {
+      if (hideTimer !== null) {
+        window.clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      clipperGroup.classList.add('submenu-open');
+    };
+    const scheduleHide = () => {
+      if (hideTimer !== null) window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        clipperGroup.classList.remove('submenu-open');
+        hideTimer = null;
+      }, 160);
+    };
+    clipperGroup.addEventListener('mouseenter', showSubmenu);
+    clipperGroup.addEventListener('mouseleave', scheduleHide);
+    submenu.addEventListener('mouseenter', showSubmenu);
+    submenu.addEventListener('mouseleave', scheduleHide);
+  }
 
   document.body.appendChild(toolbarElement);
   return toolbarElement;
@@ -767,6 +816,191 @@ function showToolbar(rect: DOMRect): void {
 function hideToolbar(): void {
   if (!toolbar) return;
   toolbar.classList.remove('visible');
+}
+
+// ==================【AI 识图功能】====================
+
+/**
+ * 创建截图选择器 UI
+ * @returns 用户选择的区域坐标，如果取消则返回 null
+ */
+function createScreenshotSelector(): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    // 创建遮罩层
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0, 0, 0, 0.3) !important;
+      cursor: crosshair !important;
+      z-index: 2147483646 !important;
+      user-select: none !important;
+    `;
+
+    // 选择框
+    const selectionBox = document.createElement('div');
+    selectionBox.style.cssText = `
+      position: fixed !important;
+      border: 2px dashed #3b82f6 !important;
+      background: rgba(59, 130, 246, 0.1) !important;
+      pointer-events: none !important;
+      z-index: 2147483647 !important;
+      display: none !important;
+    `;
+
+    // 提示文本
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+      position: fixed !important;
+      top: 20px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      background: rgba(0, 0, 0, 0.8) !important;
+      color: white !important;
+      padding: 12px 24px !important;
+      border-radius: 8px !important;
+      font-size: 14px !important;
+      z-index: 2147483647 !important;
+      backdrop-filter: blur(8px) !important;
+    `;
+    hint.textContent = '拖动选择截图区域，按 ESC 取消';
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(selectionBox);
+    document.body.appendChild(hint);
+
+    let startX = 0, startY = 0;
+    let isSelecting = false;
+
+    const onMouseDown = (e: MouseEvent) => {
+      isSelecting = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      selectionBox.style.display = 'block';
+      selectionBox.style.left = `${startX}px`;
+      selectionBox.style.top = `${startY}px`;
+      selectionBox.style.width = '0px';
+      selectionBox.style.height = '0px';
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isSelecting) return;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+
+      selectionBox.style.left = `${left}px`;
+      selectionBox.style.top = `${top}px`;
+      selectionBox.style.width = `${width}px`;
+      selectionBox.style.height = `${height}px`;
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isSelecting) return;
+      isSelecting = false;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+
+      cleanup();
+
+      if (width > 10 && height > 10) {
+        resolve({ x: left, y: top, width, height });
+      } else {
+        showToast('选择区域太小', 'warning');
+        resolve(null);
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    const cleanup = () => {
+      overlay.remove();
+      selectionBox.remove();
+      hint.remove();
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+
+    overlay.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('keydown', onKeyDown);
+  });
+}
+
+/**
+ * 主功能：截图并识别
+ */
+async function captureAndVision() {
+  try {
+    // 1. 显示选择器
+    const selection = await createScreenshotSelector();
+    if (!selection) return;
+
+    // 2. 显示加载提示
+    const loadingToast = showToast('AI 正在分析截图...', 'loading');
+
+    // 3. 发送消息给 background 进行截图和识别
+    const response = await chrome.runtime.sendMessage({
+      type: 'CAPTURE_AND_VISION',
+      pageUrl: window.location.href,
+      selection: selection,
+      isScreenshot: true
+    });
+
+    loadingToast.remove();
+
+    console.log('【AI识图】收到响应:', response);
+
+    if (response?.status === 'success' && response.result) {
+      console.log('【AI识图】result 内容:', response.result);
+
+      const structured = response.result.data;
+      const formattedText = structured
+        ? formatVisionStructuredData(structured).trim()
+        : (response.result.raw || '');
+      const fallbackText = formattedText || response.result.raw || JSON.stringify(structured ?? {}, null, 2);
+      
+      // 4. 缓存结果
+      lastVisionResult = {
+        text: fallbackText,
+        html: `<pre>${fallbackText}</pre>`,
+        structuredData: structured,
+        raw: response.result.raw
+      };
+
+      // 5. 通知 sidebar 更新（如果已打开）
+      chrome.runtime.sendMessage({
+        type: 'VISION_RESULT_READY',
+        payload: lastVisionResult
+      });
+
+      showToast('AI 识图完成！', 'success');
+    } else {
+      console.error('【AI识图】响应格式错误:', { status: response?.status, result: response?.result, error: response?.error });
+      throw new Error(response?.error || '识图失败');
+    }
+  } catch (error) {
+    console.error('AI 识图错误:', error);
+    showToast(`识图失败: ${error instanceof Error ? error.message : '未知错误'}`, 'error');
+  }
 }
 
 // ==================【Toast提示 (保持原样)】====================
@@ -1022,19 +1256,19 @@ async function clipSelection() {
 
   hideToolbar();
   const payload = convertToClipPayload(selectedData);
+  void openSidebar(); // 立即触发侧边栏，保持用户手势
   await sendToBackground(payload);
   
   multipleSelections = [];
   updateMergeButton();
-  await openSidebar();
 }
 
 async function clipFullPage() {
   hideToolbar();
   const fullPageData = extractFullPageData();
   const payload = convertToClipPayload(fullPageData);
+  void openSidebar();
   await sendToBackground(payload);
-  await openSidebar();
 }
 
 function highlightSelection() {
@@ -1109,12 +1343,12 @@ async function mergeSelections() {
   };
   
   const payload = convertToClipPayload(mergedData);
+  void openSidebar();
   await sendToBackground(payload);
   
   multipleSelections = [];
   updateMergeButton();
   showToast(`已合并 ${count} 个选区`, 'success');
-  await openSidebar();
 }
 
 function clearMultiSelectionHighlights() {
@@ -1299,6 +1533,7 @@ function init() {
   toolbar.querySelector('#sc-open-sidebar')?.addEventListener('click', openSidebar);
   toolbar.querySelector('#sc-clip-page')?.addEventListener('click', clipFullPage);
   toolbar.querySelector('#sc-merge-selections')?.addEventListener('click', mergeSelections);
+  toolbar.querySelector('#sc-ai-vision')?.addEventListener('click', captureAndVision);
 
   // 5. 自动抓取逻辑
   window.addEventListener('load', () => {
@@ -1326,11 +1561,69 @@ function init() {
 
 // ==================【消息监听】========================
 chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
+  // 请求页面内容
   if (request.type === 'REQUEST_CONTENT') {
     const pageData = extractUniversalContent();
     sendResponse(pageData);
     return true;
   }
+
+  // 图像裁剪请求（从 background 发来）
+  if (request.type === 'CROP_IMAGE') {
+    (async () => {
+      try {
+        const { dataUrl, selection } = request;
+        const img = new Image();
+        img.src = dataUrl;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+
+        // 创建 canvas 进行裁剪
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas context 创建失败');
+
+        // 获取设备像素比
+        const dpr = window.devicePixelRatio || 1;
+
+        canvas.width = selection.width * dpr;
+        canvas.height = selection.height * dpr;
+
+        // 裁剪图像
+        ctx.drawImage(
+          img,
+          selection.x * dpr,
+          selection.y * dpr,
+          selection.width * dpr,
+          selection.height * dpr,
+          0,
+          0,
+          selection.width * dpr,
+          selection.height * dpr
+        );
+
+        const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        sendResponse({ status: 'success', croppedDataUrl });
+      } catch (error) {
+        console.error('图像裁剪失败:', error);
+        sendResponse({ status: 'error', error: error instanceof Error ? error.message : '未知错误' });
+      }
+    })();
+    return true; // 保持消息通道开启
+  }
+
+  // Sidebar 请求 Vision 结果
+  if (request.type === 'GET_VISION_RESULT') {
+    if (lastVisionResult) {
+      sendResponse({ status: 'success', result: lastVisionResult });
+    } else {
+      sendResponse({ status: 'error', error: '没有缓存的识图结果' });
+    }
+    return true;
+  }
+
   return false;
 });
 
@@ -1339,4 +1632,43 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => init());
 } else {
   init();
+}
+
+function formatVisionStructuredData(data: unknown, depth = 0): string {
+  const indent = '  '.repeat(depth);
+
+  if (data === null || data === undefined) {
+    return `${indent}- —`;
+  }
+
+  if (typeof data !== 'object') {
+    return `${indent}- ${String(data)}`;
+  }
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      return `${indent}- （空）`;
+    }
+    return data
+      .map((item, index) => {
+        if (item && typeof item === 'object') {
+          const nested = formatVisionStructuredData(item, depth + 1);
+          return `${indent}- [#${index + 1}]
+${nested}`;
+        }
+        return `${indent}- [#${index + 1}] ${String(item ?? '—')}`;
+      })
+      .join('\n');
+  }
+
+  return Object.entries(data)
+    .map(([key, value]) => {
+      if (value && typeof value === 'object') {
+        const nested = formatVisionStructuredData(value, depth + 1);
+        return `${indent}- **${key}**:\n${nested}`;
+      }
+      const finalValue = value === undefined || value === null || value === '' ? '—' : String(value);
+      return `${indent}- **${key}**: ${finalValue}`;
+    })
+    .join('\n');
 }
