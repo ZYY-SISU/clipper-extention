@@ -21,6 +21,57 @@ const AI_MODELS = [
   { id: 'claude-3-5', name: 'Claude 3.5', icon: Bot, color: '#7c3aed', tag: 'smart' },
 ];
 
+const VIDEO_DOMAINS = ['bilibili.com', 'youtube.com', 'youku.com', 'iqiyi.com', 'v.qq.com'];
+const VIDEO_TEXT_HINTS = ['播放量', '弹幕', 'up主', '订阅', '频道', 'video', 'b站'];
+const MUSIC_DOMAINS = ['y.qq.com', 'music.163.com', 'kugou.com', 'kuwo.cn', 'spotify.com', 'music.apple.com'];
+const MUSIC_TEXT_HINTS = ['歌单', '曲目', '播放列表', 'tracklist', 'album', 'music'];
+const TECH_DOMAINS = ['developer.', 'docs.', 'dev.', 'api.', 'learn.microsoft.com', 'developer.mozilla.org', 'cloud.tencent.com'];
+const TECH_TEXT_HINTS = ['api', '请求参数', 'response', '返回值', '示例代码', '技术文档', 'endpoint', 'sdk'];
+
+const containsKeyword = (input: string, keywords: string[]) => {
+  if (!input) return false;
+  const normalized = input.toLowerCase();
+  return keywords.some(keyword => keyword && normalized.includes(keyword.toLowerCase()));
+};
+
+const detectTemplateRecommendation = (payload: ClipContentPayload | null, templates: templateType[]): string | null => {
+  if (!payload || templates.length === 0) return null;
+  const availableIds = new Set(templates.map(t => t.id));
+  const pickIfAvailable = (id: string) => (availableIds.has(id) ? id : null);
+
+  const urlContext = `${payload.sourceUrl || ''} ${payload.meta?.url || ''} ${payload.meta?.siteName || ''}`.toLowerCase();
+  const textContext = `${payload.text || ''} ${payload.html || ''}`.toLowerCase();
+
+  if (
+    containsKeyword(urlContext, VIDEO_DOMAINS) ||
+    containsKeyword(textContext, VIDEO_TEXT_HINTS) ||
+    textContext.includes('【视频智能剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('video-summary');
+    if (target) return target;
+  }
+
+  if (
+    containsKeyword(urlContext, MUSIC_DOMAINS) ||
+    containsKeyword(textContext, MUSIC_TEXT_HINTS) ||
+    textContext.includes('qq音乐')
+  ) {
+    const target = pickIfAvailable('music-collection');
+    if (target) return target;
+  }
+
+  if (
+    containsKeyword(urlContext, TECH_DOMAINS) ||
+    containsKeyword(textContext, TECH_TEXT_HINTS) ||
+    textContext.includes('技术文档')
+  ) {
+    const target = pickIfAvailable('tech-doc');
+    if (target) return target;
+  }
+
+  return pickIfAvailable('summary') || templates[0]?.id || null;
+};
+
 
 function SidePanel() {
   // --- 状态管理 ---
@@ -53,6 +104,9 @@ function SidePanel() {
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
+  const [isTemplateLockedByUser, setIsTemplateLockedByUser] = useState(false);
+  const [clipPayload, setClipPayload] = useState<ClipContentPayload | null>(null);
   const [status, setStatus] = useState('ready');
 
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); 
@@ -138,6 +192,8 @@ function SidePanel() {
       if (request.type === 'CLIP_CONTENT_UPDATED') {
         const payload = request.payload as ClipContentPayload;
         if (payload) {
+          setClipPayload(payload);
+          setIsTemplateLockedByUser(false);
           const nextContent = payload.text || payload.html || '';
           if (nextContent) {
             setContent(nextContent);
@@ -161,6 +217,8 @@ function SidePanel() {
 
       if (response?.status === 'success' && response.data) {
         const payload = response.data as ClipContentPayload;
+        setClipPayload(payload);
+        setIsTemplateLockedByUser(false);
         const nextContent = payload.text || payload.html || '';
         if (nextContent) {
           setContent(nextContent);
@@ -198,7 +256,12 @@ function SidePanel() {
           
           if (tab.id) {
               const pageData = await chrome.tabs.sendMessage(tab.id, { type: 'REQUEST_CONTENT' }).catch(() => null);
-              if (pageData) setContent(pageData.text || pageData.html || '');
+              if (pageData) {
+                const payload = pageData as ClipContentPayload;
+                setClipPayload(payload);
+                setIsTemplateLockedByUser(false);
+                setContent(payload.text || payload.html || '');
+              }
           }
         }
       } catch (error: unknown) { console.error('Tab update error:', error); }
@@ -239,6 +302,7 @@ function SidePanel() {
           { id: 'table', name: '表格提取', iconType: 'table' },
           { id: 'checklist', name: '清单整理', iconType: 'check' },
           { id: 'video-summary', name: '视频摘要', iconType: 'Video' },
+          { id: 'music-collection', name: '音乐合辑', iconType: 'music' },
           { id: 'tech-doc', name: '技术文档', iconType: 'globe' },
         ]);
         console.error('Failed to fetch templates:', e);
@@ -281,6 +345,20 @@ function SidePanel() {
   useEffect(() => {
     setSelectedToolIds((prev) => prev.filter((id) => availableTools.some((tool) => tool.id === id)));
   }, [availableTools]);
+
+  useEffect(() => {
+    if (!clipPayload || templates.length === 0) {
+      setRecommendedTemplateId(null);
+      return;
+    }
+
+    const nextRecommendation = detectTemplateRecommendation(clipPayload, templates);
+    setRecommendedTemplateId(nextRecommendation);
+
+    if (!isTemplateLockedByUser && nextRecommendation && nextRecommendation !== selectedTemplateId) {
+      setSelectedTemplateId(nextRecommendation);
+    }
+  }, [clipPayload, templates, isTemplateLockedByUser, selectedTemplateId]);
 
   const getIconComponent = (type:templateType['iconType']) => {
     switch(type) {
@@ -727,6 +805,11 @@ function SidePanel() {
     return translated;
   };
 
+  const handleTemplateCardClick = (tplId: string) => {
+    setSelectedTemplateId(tplId);
+    setIsTemplateLockedByUser(true);
+  };
+
   // --- 视图渲染 ---
 
   const renderHistoryDrawer = () => (
@@ -859,7 +942,10 @@ function SidePanel() {
            templates.map(tpl => {
              const Icon = getIconComponent(tpl.iconType);
              return (
-               <div key={tpl.id} className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} onClick={() => setSelectedTemplateId(tpl.id)}>
+               <div key={tpl.id} className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} onClick={() => handleTemplateCardClick(tpl.id)}>
+                 {recommendedTemplateId === tpl.id && (
+                   <span className="template-badge">{t('recommended') || '推荐'}</span>
+                 )}
                  <Icon size={20} /> 
                  <span>{getTemplateName(tpl)}</span>
                </div>

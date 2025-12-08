@@ -377,6 +377,7 @@ body {
   cursor: pointer; transition: all 0.2s;
   color: var(--text-secondary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  position: relative;
 }
 .template-card:hover {
   background: var(--gemini-surface);
@@ -390,6 +391,19 @@ body {
   box-shadow: none;
 }
 .template-card.active svg { stroke-width: 2.5px; }
+
+.template-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--gemini-blue);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  pointer-events: none;
+}
 
 /* =============================================================================
    💬 聊天界面
