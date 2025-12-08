@@ -8,6 +8,7 @@ export interface ChatMessage {
   isLoading?: boolean;
   templateId?: string;
   structuredData?: SummaryType | VideoType | TechDocType | null; // 存储完整的结构化信息
+  notes?: string; // 用户感想
 }
 
 // 对话接口
