@@ -203,6 +203,7 @@ export interface UserConfig {
     keyPoints?: string[];
     relatedLinks?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
+    notes?: string;
   }
 
   export interface SummaryType {
@@ -211,6 +212,7 @@ export interface UserConfig {
     tags?: string[];
     sentiment?: string;
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
+    notes?: string;
   }
 
   export interface VideoType {
@@ -224,6 +226,7 @@ export interface UserConfig {
     coin_count?: string;
     collect_count?: string;
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
+    notes?: string;
   }
 
   interface parameterType {
@@ -246,4 +249,5 @@ export interface UserConfig {
     relatedLinks?: string[];
     tags?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
+    notes?: string;
   }

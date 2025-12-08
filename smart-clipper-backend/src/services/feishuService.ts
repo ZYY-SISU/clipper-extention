@@ -10,6 +10,7 @@ const FIELDS_SUMMARY = [
   { field_name: "摘要", type: 1 },
   { field_name: "情感", type: 1 },
   { field_name: "标签", type: 1 },
+  { field_name: "个人感想", type: 1 },
   { field_name: "原文链接", type: 15 }
 ];
 
@@ -23,6 +24,7 @@ const FIELDS_VIDEO = [
   { field_name: "投币", type: 1 },      // 🟢 独有
   { field_name: "收藏", type: 1 },      // 🟢 独有
   { field_name: "标签", type: 1 },
+  { field_name: "个人感想", type: 1 },
   { field_name: "原文链接", type: 15 }
 ];
 
@@ -34,7 +36,8 @@ const FIELDS_MUSIC = [
   { field_name: "时长", type: 1 },
   { field_name: "歌曲链接", type: 15 },
   { field_name: "所属歌单", type: 1 }, // 记录这首歌属于哪个歌单
-  { field_name: "歌单链接", type: 15 }
+  { field_name: "歌单链接", type: 15 },
+  { field_name: "个人感想", type: 1 }
 ];
 
 // 映射关系
@@ -181,6 +184,7 @@ async function addBatchMusicRecords(data: any, options: SaveOptions) {
     if (validFields.includes("歌手")) fields["歌手"] = track.artist;
     if (validFields.includes("专辑")) fields["专辑"] = track.album;
     if (validFields.includes("时长")) fields["时长"] = track.duration;
+    if (validFields.includes("个人感想")) fields["个人感想"] = track.notes || data.notes;
     
     if (validFields.includes("歌曲链接")) {
        fields["歌曲链接"] = { text: "播放", link: (track.url && track.url !== 'N/A') ? track.url : data.url };
@@ -222,6 +226,7 @@ async function addSingleRecord(data: any, options: SaveOptions) {
   if (data.summary) candidateFields["摘要"] = data.summary;
   if (data.sentiment) candidateFields["情感"] = data.sentiment;
   if (data.tags) candidateFields["标签"] = Array.isArray(data.tags) ? data.tags.join(", ") : data.tags;
+  if (data.notes) candidateFields["个人感想"] = data.notes;
   candidateFields["原文链接"] = { text: "点击访问", link: data.url || "" };
 
   // 视频字段
