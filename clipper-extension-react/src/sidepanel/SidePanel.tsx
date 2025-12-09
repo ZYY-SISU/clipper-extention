@@ -6,9 +6,10 @@ import {
   Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
-  Video, Trash2, Edit2, Sun, Moon, Music, StickyNote
+  Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
+  Download, ChevronUp, FileSpreadsheet
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload, ImageData, LinkData, HighlightInfo } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -21,65 +22,31 @@ const AI_MODELS = [
   { id: 'claude-3-5', name: 'Claude 3.5', icon: Bot, color: '#7c3aed', tag: 'smart' },
 ];
 
-const VIDEO_DOMAINS = ['bilibili.com', 'youtube.com', 'youku.com', 'iqiyi.com', 'v.qq.com'];
-const VIDEO_TEXT_HINTS = ['播放量', '弹幕', 'up主', '订阅', '频道', 'video', 'b站'];
-const MUSIC_DOMAINS = ['y.qq.com', 'music.163.com', 'kugou.com', 'kuwo.cn', 'spotify.com', 'music.apple.com'];
-const MUSIC_TEXT_HINTS = ['歌单', '曲目', '播放列表', 'tracklist', 'album', 'music'];
-const TECH_DOMAINS = ['developer.', 'docs.', 'dev.', 'api.', 'learn.microsoft.com', 'developer.mozilla.org', 'cloud.tencent.com'];
-const TECH_TEXT_HINTS = ['api', '请求参数', 'response', '返回值', '示例代码', '技术文档', 'endpoint', 'sdk'];
-
-const containsKeyword = (input: string, keywords: string[]) => {
-  if (!input) return false;
-  const normalized = input.toLowerCase();
-  return keywords.some(keyword => keyword && normalized.includes(keyword.toLowerCase()));
-};
-
-const detectTemplateRecommendation = (payload: ClipContentPayload | null, templates: templateType[]): string | null => {
-  if (!payload || templates.length === 0) return null;
-  const availableIds = new Set(templates.map(t => t.id));
-  const pickIfAvailable = (id: string) => (availableIds.has(id) ? id : null);
-
-  const urlContext = `${payload.sourceUrl || ''} ${payload.meta?.url || ''} ${payload.meta?.siteName || ''}`.toLowerCase();
-  const textContext = `${payload.text || ''} ${payload.html || ''}`.toLowerCase();
-
-  if (
-    containsKeyword(urlContext, VIDEO_DOMAINS) ||
-    containsKeyword(textContext, VIDEO_TEXT_HINTS) ||
-    textContext.includes('【视频智能剪藏】'.toLowerCase())
-  ) {
-    const target = pickIfAvailable('video-summary');
-    if (target) return target;
-  }
-
-  if (
-    containsKeyword(urlContext, MUSIC_DOMAINS) ||
-    containsKeyword(textContext, MUSIC_TEXT_HINTS) ||
-    textContext.includes('qq音乐')
-  ) {
-    const target = pickIfAvailable('music-collection');
-    if (target) return target;
-  }
-
-  if (
-    containsKeyword(urlContext, TECH_DOMAINS) ||
-    containsKeyword(textContext, TECH_TEXT_HINTS) ||
-    textContext.includes('技术文档')
-  ) {
-    const target = pickIfAvailable('tech-doc');
-    if (target) return target;
-  }
-
-  return pickIfAvailable('summary') || templates[0]?.id || null;
-};
-
 
 function SidePanel() {
   // --- 状态管理 ---
   // ✨ 控制面板显示/隐藏 (默认显示)
   const [isVisible, setIsVisible] = useState(true);
+  
+  // 调试：确保组件正确挂载
+  useEffect(() => {
+    console.log('[SidePanel] 组件已挂载，isVisible:', isVisible);
+  }, []);
 
   const [view, setView] = useState<'clipper' | 'chat'>('clipper');
   const [showHistory, setShowHistory] = useState(false);
+  const [content, setContent] = useState('');
+  const [clipImages, setClipImages] = useState<Array<ImageData>>([]); // 新增：剪藏的图片
+  const [clipLinks, setClipLinks] = useState<Array<LinkData>>([]); // 新增：剪藏的链接
+  const [clipHighlights, setClipHighlights] = useState<Array<HighlightInfo>>([]); // 新增：高亮信息
+  const [linksExpanded, setLinksExpanded] = useState(false); // 链接展开状态
+  const [imagesExpanded, setImagesExpanded] = useState(false); // 图片展开状态
+  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);// 🟢 1. 新增状态:用于存储 AI 分析出来的原始结构化数据，以便发给飞书
+  const [isSaving, setIsSaving] = useState(false);// 🟢 2. 新增状态：控制导出按钮的 Loading 状态
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
+  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
+  const [_isInitializing, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -92,21 +59,11 @@ function SidePanel() {
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
 
-  const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [singleExportStatus, setSingleExportStatus] = useState<{messageId: number | null, status: 'idle' | 'success', tableUrl?: string}>({messageId: null, status: 'idle'});
-  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string,open_id: string;} | null>(null);
-  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [, setIsInitializing] = useState(false);
   
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
-  const [isTemplateLockedByUser, setIsTemplateLockedByUser] = useState(false);
-  const [clipPayload, setClipPayload] = useState<ClipContentPayload | null>(null);
   const [status, setStatus] = useState('ready');
 
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); 
@@ -123,7 +80,6 @@ function SidePanel() {
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [currentConversationUrl, setCurrentConversationUrl] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -179,7 +135,32 @@ function SidePanel() {
     const handleMessage = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
       if (request.type === 'TOGGLE_PANEL') {
         // 收到信号，切换状态 (显示 -> 隐藏，隐藏 -> 显示)
-        setIsVisible(prev => !prev);
+        const newVisible = !isVisible;
+        setIsVisible(newVisible);
+        
+        // 如果隐藏侧边栏，清除所有高亮和选区高亮
+        if (!newVisible) {
+          chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+            if (tab?.id) {
+              chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_ALL_HIGHLIGHTS' }).catch(() => {});
+            }
+          });
+        }
+        
+        sendResponse({ status: 'success' });
+      } else if (request.type === 'CLIP_CONTENT') {
+        setContent(request.payload.text || request.payload.html || '');
+        // 保存图片和链接信息
+        if (request.payload.images) {
+          setClipImages(request.payload.images);
+        }
+        if (request.payload.links) {
+          setClipLinks(request.payload.links);
+        }
+        // 保存高亮信息
+        if (request.payload.highlights) {
+          setClipHighlights(request.payload.highlights);
+        }
         sendResponse({ status: 'success' });
       }
     };
@@ -223,42 +204,78 @@ function SidePanel() {
   }, []);
 
   useEffect(() => {
-    const handleClipContentUpdate = (request: requestType) => {
+    const handleClipContentUpdate = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
       if (request.type === 'CLIP_CONTENT_UPDATED') {
-        const payload = request.payload as ClipContentPayload;
-        if (payload) {
-          setClipPayload(payload);
-          setIsTemplateLockedByUser(false);
-          const nextContent = payload.text || payload.html || '';
-          if (nextContent) {
-            setContent(nextContent);
-            setStructuredData(null);
-            setView('clipper');
+        try {
+          const payload = request.payload as ClipContentPayload;
+          if (payload) {
+            const nextContent = payload.text || payload.html || '';
+            if (nextContent) {
+              setContent(nextContent);
+              setStructuredData(null);
+              setView('clipper');
+            }
+            // 修复：同时更新图片和链接信息
+            if (payload.images) {
+              setClipImages(payload.images);
+            }
+            if (payload.links) {
+              setClipLinks(payload.links);
+            }
+            if (payload.highlights) {
+              setClipHighlights(payload.highlights);
+            }
           }
+          sendResponse({ status: 'success' });
+        } catch (error) {
+          console.error('处理剪藏内容更新失败:', error);
+          sendResponse({ status: 'error', message: error instanceof Error ? error.message : '未知错误' });
         }
       }
+      return true; // 保持消息通道开启
     };
 
     chrome.runtime.onMessage.addListener(handleClipContentUpdate);
-    return () => chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+    return () => {
+      try {
+        chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+      } catch (error) {
+        // 忽略扩展上下文失效的错误（开发环境常见）
+        if (error instanceof Error && !error.message.includes('Extension context invalidated')) {
+          console.error('移除消息监听器失败:', error);
+        }
+      }
+    };
   }, []);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_LAST_CLIP' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn('获取最近一次剪藏失败:', chrome.runtime.lastError.message);
+        const errorMsg = chrome.runtime.lastError.message;
+        // 忽略扩展上下文失效的错误（开发环境常见）
+        if (errorMsg && !errorMsg.includes('Extension context invalidated')) {
+          console.warn('获取最近一次剪藏失败:', errorMsg);
+        }
         return;
       }
 
       if (response?.status === 'success' && response.data) {
         const payload = response.data as ClipContentPayload;
-        setClipPayload(payload);
-        setIsTemplateLockedByUser(false);
         const nextContent = payload.text || payload.html || '';
         if (nextContent) {
           setContent(nextContent);
           setStructuredData(null);
           setView('clipper');
+        }
+        // 修复：同时加载图片和链接信息
+        if (payload.images) {
+          setClipImages(payload.images);
+        }
+        if (payload.links) {
+          setClipLinks(payload.links);
+        }
+        if (payload.highlights) {
+          setClipHighlights(payload.highlights);
         }
       }
     });
@@ -291,12 +308,7 @@ function SidePanel() {
           
           if (tab.id) {
               const pageData = await chrome.tabs.sendMessage(tab.id, { type: 'REQUEST_CONTENT' }).catch(() => null);
-              if (pageData) {
-                const payload = pageData as ClipContentPayload;
-                setClipPayload(payload);
-                setIsTemplateLockedByUser(false);
-                setContent(payload.text || payload.html || '');
-              }
+              if (pageData) setContent(pageData.text || pageData.html || '');
           }
         }
       } catch (error: unknown) { console.error('Tab update error:', error); }
@@ -316,16 +328,11 @@ function SidePanel() {
   }, []);
 
   useEffect(() => {
-    if (currentConversationId && chatHistory.length > 0) {
-      // 使用当前对话所属的URL来保存聊天记录，如果没有则使用当前网页的URL
-      const saveUrl = currentConversationUrl || currentUrl;
-      if (saveUrl) {
-        ChatStorage.updateConversationMessages(saveUrl, currentConversationId, chatHistory);
-        // 更新当前网页的对话列表
-        setConversations(ChatStorage.getConversationList(currentUrl));
-      }
+    if (currentUrl && currentConversationId) {
+      ChatStorage.updateConversationMessages(currentUrl, currentConversationId, chatHistory);
+      if (!editingConvId) setConversations(ChatStorage.getConversationList(currentUrl));
     }
-  }, [chatHistory, currentUrl, currentConversationId, currentConversationUrl]);
+  }, [chatHistory, currentUrl, currentConversationId]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -342,7 +349,6 @@ function SidePanel() {
           { id: 'table', name: '表格提取', iconType: 'table' },
           { id: 'checklist', name: '清单整理', iconType: 'check' },
           { id: 'video-summary', name: '视频摘要', iconType: 'Video' },
-          { id: 'music-collection', name: '音乐合辑', iconType: 'music' },
           { id: 'tech-doc', name: '技术文档', iconType: 'globe' },
         ]);
         console.error('Failed to fetch templates:', e);
@@ -386,20 +392,6 @@ function SidePanel() {
     setSelectedToolIds((prev) => prev.filter((id) => availableTools.some((tool) => tool.id === id)));
   }, [availableTools]);
 
-  useEffect(() => {
-    if (!clipPayload || templates.length === 0) {
-      setRecommendedTemplateId(null);
-      return;
-    }
-
-    const nextRecommendation = detectTemplateRecommendation(clipPayload, templates);
-    setRecommendedTemplateId(nextRecommendation);
-
-    if (!isTemplateLockedByUser && nextRecommendation && nextRecommendation !== selectedTemplateId) {
-      setSelectedTemplateId(nextRecommendation);
-    }
-  }, [clipPayload, templates, isTemplateLockedByUser, selectedTemplateId]);
-
   const getIconComponent = (type:templateType['iconType']) => {
     switch(type) {
       case 'text': return FileText;
@@ -420,17 +412,9 @@ function SidePanel() {
   const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); 
     if (confirm(t('confirmDelete'))) {
-      // 查找对话所属的URL
-      const conversationUrl = ChatStorage.findConversationUrl(id);
-      if (conversationUrl) {
-        ChatStorage.deleteConversation(conversationUrl, id);
-      }
-      
-      // 更新当前页面的对话列表
+      ChatStorage.deleteConversation(currentUrl, id);
       const updatedList = ChatStorage.getConversationList(currentUrl);
       setConversations(updatedList);
-      
-      // 如果删除的是当前对话，需要切换到其他对话或创建新对话
       if (currentConversationId === id) {
         if (updatedList.length > 0) {
           setCurrentConversationId(updatedList[0].id);
@@ -449,21 +433,12 @@ function SidePanel() {
   const handleSubmitRename = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!editingConvId || !editingTitle.trim()) return;
-    
-    // 查找对话所属的URL
-    const conversationUrl = ChatStorage.findConversationUrl(editingConvId);
-    if (conversationUrl) {
-      // 获取当前对话信息
-      const conv = ChatStorage.getConversation(conversationUrl, editingConvId);
-      if (conv) {
-        const updated = { ...conv, title: editingTitle.trim() };
-        ChatStorage.updateConversation(conversationUrl, updated);
-        
-        // 更新当前页面的对话列表
-        setConversations(ChatStorage.getConversationList(currentUrl));
-      }
+    const conv = conversations.find(c => c.id === editingConvId);
+    if (conv) {
+      const updated = { ...conv, title: editingTitle.trim() };
+      ChatStorage.updateConversation(currentUrl, updated);
+      setConversations(ChatStorage.getConversationList(currentUrl));
     }
-    
     setEditingConvId(null);
   };
 
@@ -662,7 +637,7 @@ function SidePanel() {
     });
   };
 //   传入完整的 userInfo 对象，而不仅仅是 token
-  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id: string }) => {
+  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id?: string }) => {
     setIsInitializing(true);
     try {
       const storage = await chrome.storage.sync.get(['clipper_conf']);//检查本地存储
@@ -694,7 +669,7 @@ function SidePanel() {
       if (json.code === 200) {
         //  3. 组装带有身份信息的配置
         const newConfig: UserConfig = {
-          userId: user.open_id, // 绑定 ID
+          userId: user.open_id || '', // 绑定 ID
           name: user.name,      // 绑定名字
           // avatar: user.avatar,  // 绑定头像
           appToken: json.data.appToken,
@@ -761,10 +736,39 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
+      // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
+      let finalStructuredData = { ...structuredData };
+      
+      // 检查原始内容中是否有高亮格式
+      if (content && content.includes('==')) {
+        // 如果 summary 字段存在且是字符串，检查是否需要应用高亮格式
+        // AI 分析可能会移除高亮格式，我们需要从原始内容中恢复
+        if (finalStructuredData && 'summary' in finalStructuredData && typeof finalStructuredData.summary === 'string') {
+          // 从原始内容中提取高亮文本，并尝试应用到 summary 中
+          // 使用正则表达式查找所有高亮文本
+          const highlightMatches = content.match(/==([^=]+)==/g);
+          if (highlightMatches && highlightMatches.length > 0) {
+            // 如果 summary 中包含高亮文本（去掉 == 标记后），就应用高亮格式
+            highlightMatches.forEach(highlight => {
+              const textWithoutMarkers = highlight.replace(/==/g, '');
+              if (finalStructuredData && 'summary' in finalStructuredData && typeof finalStructuredData.summary === 'string') {
+                // 如果 summary 中包含这个文本但没有高亮标记，就添加高亮标记
+                if (finalStructuredData.summary.includes(textWithoutMarkers) && !finalStructuredData.summary.includes(highlight)) {
+                  finalStructuredData.summary = finalStructuredData.summary.replace(
+                    new RegExp(textWithoutMarkers.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                    highlight
+                  );
+                }
+              }
+            });
+          }
+        }
+      }
+
       const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+        body: JSON.stringify({ ...finalStructuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
       const result = await response.json();
       
@@ -786,14 +790,16 @@ function SidePanel() {
     if (!message.templateId) return alert('此消息没有关联的模板信息');
     if (!userInfo || !userInfo.token) return alert(t('notConnected'));
 
-    if (userConfig && userConfig.userId !== userInfo.open_id) {
+    if (userConfig && userInfo.open_id && userConfig.userId !== userInfo.open_id) {
       alert(`配置冲突！\n当前配置属于：${userConfig.name}\n当前登录用户：${userInfo.name}\n\n系统将自动重新初始化...`);
-      await checkAndInitConfig(userInfo); // 强制重新初始化
+      if (userInfo.open_id) {
+        await checkAndInitConfig({ ...userInfo, open_id: userInfo.open_id }); // 强制重新初始化
+      }
       return;
     }
 
-    if (!userConfig) {
-       await checkAndInitConfig(userInfo);
+    if (!userConfig && userInfo.open_id) {
+       await checkAndInitConfig({ ...userInfo, open_id: userInfo.open_id });
        return;
     }
 
@@ -805,7 +811,7 @@ function SidePanel() {
       const templateIdToUse = message.templateId;
 
       // 根据 ID 去配置里查表
-      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+      const tableId = userConfig?.tables[templateIdToUse] || userConfig?.tables['default'];
 
       console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
@@ -815,12 +821,16 @@ function SidePanel() {
         templateId: templateIdToUse,
         url: tab.url || '',
         notes: message.notes,
+        // 新增：图片、链接、高亮信息
+        images: clipImages.length > 0 ? clipImages : undefined,
+        links: clipLinks.length > 0 ? clipLinks : undefined,
+        highlights: clipHighlights.length > 0 ? clipHighlights : undefined,
       };
 
       const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig?.appToken, tableId  })
       });
       const result = await response.json();
       
@@ -838,13 +848,123 @@ function SidePanel() {
     finally { setIsSaving(false); }
   };
 
+
+  // --- 视图 2: 对话列表（已废弃，使用 renderHistoryDrawer） ---
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
+  const _renderConversationsView = () => (
+    <div className="conversations-container">
+      <div className="conversations-header">
+        <h3>聊天记录</h3>
+        <button 
+          className="new-conversation-btn"
+          onClick={() => handleNewConversation()}
+        >
+          <PlusCircle size={18} />
+        </button>
+      </div>
+      <div className="conversations-list">
+        {conversations.map((conversation) => (
+          <div
+            key={conversation.id}
+            className={`conversation-item ${currentConversationId === conversation.id ? 'active' : ''}`}
+            onClick={() => handleSwitchConversation(conversation.id)}
+          >
+            <div className="conversation-title">
+              {conversation.title || '新对话'}
+            </div>
+            <div className="conversation-preview">
+              {conversation && conversation.messages && conversation.messages.length > 0 ? 
+                (conversation.messages[conversation.messages.length - 1].text.substring(0, 50) + '...') : 
+                '暂无消息'}
+            </div>
+            <div className="conversation-time">
+              {new Date(conversation.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ---新增 视图 3: 设置界面（已废弃，使用 renderSettingsModal） ---
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
+  const _renderSettings = () => (
+    <div className="container">
+      <div className="section-title">设置目标表格</div>
+      
+      <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ marginBottom: '8px', fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+          飞书多维表格链接
+        </div>
+       
+        <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+          ℹ️ 请打开你的飞书多维表格，直接复制浏览器顶部的完整地址栏链接粘贴到这里。
+        </div>
+      </div>
+
+      <button
+        onClick={() => setShowSettings(false)} // 点击保存并返回
+        style={{
+          marginTop: '20px',
+          width: '100%',
+          padding: '10px',
+          background: '#3370ff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600'
+        }}
+      >
+        保存并返回
+      </button>
+
+
+      {/* 🟢 [新增] 红色重置按钮 */}
+      <button
+        onClick={async () => {
+          if (confirm("确定要重置吗？这将清除当前的表格绑定。\n下次同步时，系统将为你创建一个全新的飞书表格。")) {
+            // 1. 清除 Chrome 本地存储
+            await chrome.storage.sync.remove(['clipper_conf']);
+            // 2. 清除 React 状态
+            setUserConfig(null);
+            //setBitableUrl('');
+            // 3. 关闭设置页
+            setShowSettings(false);
+            alert("✅ 重置成功！\n请重新点击【存入飞书】或【个人用户】头像，系统会自动为你创建新表格。");
+          }
+        }}
+        style={{
+          marginTop: '12px',
+          width: '100%',
+          padding: '10px',
+          background: 'transparent',
+          color: '#ef4444', // 警示红
+          border: '1px solid #ef4444',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '13px'
+        }}
+      >
+        重置/重新创建表格
+      </button>
+
+
+
+    </div>
+  );
+
+
+
+  // 新建对话
   const handleNewConversation = () => {
     if (!currentUrl) return;
     const newConvo = ChatStorage.createConversation(currentUrl);
     setConversations(ChatStorage.getConversationList(currentUrl));
     setCurrentConversationId(newConvo.id);
-    // 新对话属于当前网页的URL
-    setCurrentConversationUrl(currentUrl);
     setChatHistory([]);
     setView('chat');
     setShowHistory(false);
@@ -852,15 +972,8 @@ function SidePanel() {
 
   const handleSwitchConversation = (id: string) => {
     setCurrentConversationId(id);
-    // 从所有对话中查找
-    const allConversations = ChatStorage.getAllConversations();
-    const c = allConversations.find(conv => conv.id === id);
-    if (c) {
-      setChatHistory(c.messages);
-      // 查找对话所属的URL并保存
-      const conversationUrl = ChatStorage.findConversationUrl(id);
-      setCurrentConversationUrl(conversationUrl);
-    }
+    const c = ChatStorage.getConversation(currentUrl, id);
+    if (c) setChatHistory(c.messages);
     setView('chat');
     setShowHistory(false);
   };
@@ -870,11 +983,6 @@ function SidePanel() {
     const translated = t(key);
     if (translated === key) return tpl.name;
     return translated;
-  };
-
-  const handleTemplateCardClick = (tplId: string) => {
-    setSelectedTemplateId(tplId);
-    setIsTemplateLockedByUser(true);
   };
 
   // --- 视图渲染 ---
@@ -896,7 +1004,7 @@ function SidePanel() {
         </button>
 
         <div className="history-list">
-          {ChatStorage.getAllConversations().map(c => (
+          {conversations.map(c => (
             <div key={c.id} className={`history-item ${currentConversationId === c.id ? 'active' : ''}`} onClick={() => handleSwitchConversation(c.id)}>
               {editingConvId === c.id ? (
                 <div style={{display:'flex', alignItems:'center', flex:1, width:'100%'}} onClick={e=>e.stopPropagation()}>
@@ -905,22 +1013,8 @@ function SidePanel() {
                 </div>
               ) : (
                 <>
-                  <div className="history-title-container">
-                    <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
-                  </div>
+                  <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
                   <div className="history-actions">
-                     <button 
-                       className="action-icon-btn" 
-                       onClick={(e)=>{
-                         e.stopPropagation();
-                         // 确保URL是完整的
-                         const fullUrl = c.url.startsWith('http://') || c.url.startsWith('https://') ? c.url : `https://${c.url}`;
-                         window.open(fullUrl, '_blank'); // 打开新窗口跳转到对应网站
-                       }}
-                       title={t('openWebsite') || 'Open Website'}
-                     >
-                       <Globe size={14}/>
-                     </button>
                      <button className="action-icon-btn" onClick={(e)=>handleStartRename(e, c.id, c.title)} title={t('rename')}><Edit2 size={14}/></button>
                      <button className="action-icon-btn delete" onClick={(e)=>handleDeleteConversation(e, c.id)} title={t('delete')}><Trash2 size={14}/></button>
                   </div>
@@ -1015,6 +1109,224 @@ function SidePanel() {
         <textarea className="preview-textarea" value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('previewPlaceholder')} />
       </div>
 
+      {/* 新增：链接展示框 */}
+      {clipLinks.length > 0 && (
+        <>
+          <div className="section-title">
+            <span>🔗 链接 ({clipLinks.length}个)</span>
+            <button 
+              className="export-excel-btn"
+              onClick={() => {
+                // 导出链接为Excel
+                const csvContent = [
+                  ['链接文本', '链接地址', '域名'],
+                  ...clipLinks.map(link => {
+                    try {
+                      const domain = new URL(link.href).hostname;
+                      return [link.text || link.href, link.href, domain];
+                    } catch {
+                      return [link.text || link.href, link.href, ''];
+                    }
+                  })
+                ].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+                
+                // 添加BOM以支持Excel正确识别UTF-8
+                const BOM = '\uFEFF';
+                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `链接列表_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                // 显示成功提示
+                const toast = document.createElement('div');
+                toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.8); color: white; padding: 12px 20px; border-radius: 8px; z-index: 2147483650; font-size: 14px;';
+                toast.textContent = `✅ 已导出 ${clipLinks.length} 个链接到Excel`;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+              }}
+              title="导出链接为Excel"
+            >
+              <FileSpreadsheet size={14} />
+              导出Excel
+            </button>
+          </div>
+          <div className="links-container">
+            {(linksExpanded ? clipLinks : clipLinks.slice(0, 5)).map((link, idx) => {
+              try {
+                const domain = new URL(link.href).hostname;
+                return (
+                  <div key={idx} className="link-item">
+                    <a 
+                      href={link.href} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="link-content"
+                    >
+                      <div className="link-text">{link.text || link.href}</div>
+                      <div className="link-domain">{domain}</div>
+                    </a>
+                  </div>
+                );
+              } catch {
+                return (
+                  <div key={idx} className="link-item">
+                    <a 
+                      href={link.href} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="link-content"
+                    >
+                      <div className="link-text">{link.text || link.href}</div>
+                    </a>
+                  </div>
+                );
+              }
+            })}
+            {clipLinks.length > 5 && (
+              <button 
+                className="expand-toggle"
+                onClick={() => setLinksExpanded(!linksExpanded)}
+              >
+                {linksExpanded ? (
+                  <>
+                    <ChevronUp size={14} />
+                    收起
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    展开更多 ({clipLinks.length - 5}个)
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 新增：图片展示框 */}
+      {clipImages.length > 0 && (
+        <>
+          <div className="section-title">
+            <span>📷 图片 ({clipImages.length}张)</span>
+            <button 
+              className="download-all-btn"
+              onClick={async () => {
+                for (let i = 0; i < clipImages.length; i++) {
+                  const img = clipImages[i];
+                  try {
+                    if (chrome.downloads) {
+                      const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                      const filename = img.alt 
+                        ? `${img.alt.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`
+                        : `image-${i + 1}.${extension}`;
+                      await chrome.downloads.download({
+                        url: img.src,
+                        filename: filename,
+                        saveAs: false
+                      });
+                    } else {
+                      const response = await fetch(img.src);
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = img.alt || `image-${i + 1}.jpg`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                  } catch (error) {
+                    console.error(`下载图片失败: ${img.src}`, error);
+                  }
+                }
+              }}
+              title="一键下载所有图片"
+            >
+              <Download size={14} />
+              下载全部
+            </button>
+          </div>
+          <div className="images-container">
+            {(imagesExpanded ? clipImages : clipImages.slice(0, 4)).map((img, idx) => (
+              <div key={idx} className="image-item">
+                <div className="image-wrapper">
+                  <img 
+                    src={img.src} 
+                    alt={img.alt || `图片 ${idx + 1}`}
+                    className="clip-image"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                    onClick={async () => {
+                      try {
+                        if (chrome.downloads) {
+                          const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                          const filename = img.alt 
+                            ? `${img.alt.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`
+                            : `image-${idx + 1}.${extension}`;
+                          await chrome.downloads.download({
+                            url: img.src,
+                            filename: filename,
+                            saveAs: false
+                          });
+                        } else {
+                          const response = await fetch(img.src);
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                          a.download = img.alt || `image-${idx + 1}.${extension}`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                        }
+                      } catch (error) {
+                        console.error(`下载图片失败: ${img.src}`, error);
+                        alert('下载失败，请检查图片链接是否有效');
+                      }
+                    }}
+                  />
+                  <div className="image-download-overlay" title="点击下载">
+                    <Download size={16} />
+                  </div>
+                </div>
+                {img.alt && (
+                  <div className="image-caption">{img.alt}</div>
+                )}
+              </div>
+            ))}
+            {clipImages.length > 4 && (
+              <button 
+                className="expand-toggle image-expand-toggle"
+                onClick={() => setImagesExpanded(!imagesExpanded)}
+              >
+                {imagesExpanded ? (
+                  <>
+                    <ChevronUp size={14} />
+                    收起
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    展开更多 ({clipImages.length - 4}张)
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="section-title">{t('selectTemplate')}</div>
       <div className="template-grid">
         {isLoadingTemplates ? (
@@ -1028,12 +1340,9 @@ function SidePanel() {
                <div 
                  key={tpl.id} 
                  className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} 
-                 onClick={() => handleTemplateCardClick(tpl.id)}
+                 onClick={() => setSelectedTemplateId(tpl.id)}
                  title={tooltip}
                >
-                 {recommendedTemplateId === tpl.id && (
-                   <span className="template-badge">{t('recommended') || '推荐'}</span>
-                 )}
                  <Icon size={20} /> 
                  <span>{getTemplateName(tpl)}</span>
                </div>
@@ -1178,7 +1487,7 @@ function SidePanel() {
             {showToolPicker && (
               <div className="mcp-tool-panel">
                 {isLoadingTools ? (
-                  <div className="mcp-tool-panel-empty">加载中...</div>
+                  <div className="mcp-tool-panel-empty">正在加载工具...</div>
                 ) : availableTools.length === 0 ? (
                   <div className="mcp-tool-panel-empty">暂无可用工具</div>
                 ) : (
@@ -1293,7 +1602,7 @@ function SidePanel() {
 
   return (
     // ✨ 控制显示/隐藏
-   <div className="sidepanel-container" style={{ display: isVisible ? 'flex' : 'none' }}>
+   <div className={`sidepanel-container ${isVisible ? '' : 'hidden'}`}>
       <div className="header">
         <div className="header-left">
           <button className="icon-btn" onClick={() => setShowHistory(true)} title={t('history')}><Menu size={22}/></button>
