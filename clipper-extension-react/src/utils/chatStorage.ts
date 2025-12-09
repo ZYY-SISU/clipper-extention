@@ -3,41 +3,44 @@ import type { SummaryType, VideoType, TechDocType } from "../types/index"
 
 // 聊天记录接口
 export interface ChatMessage {
-  role: string;
-  text: string;
+  role: string;  // 角色：ai或user
+  text: string; // 消息内容
   isLoading?: boolean;
-  templateId?: string;
-  structuredData?: SummaryType | VideoType | TechDocType | null; // 存储完整的结构化信息
+  templateId?: string;  // 模版ID
+  structuredData?: SummaryType | VideoType | TechDocType | null; // 完整的结构化信息
   notes?: string; // 用户感想
 }
 
 // 对话接口
 export interface Conversation {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
+  id: string;   // 对话唯一ID
+  title: string; // 对话标题-->在历史记录中显示
+  messages: ChatMessage[];  // 消息列表
   timestamp: number; // 最后更新时间
-  isActive?: boolean;
+  isActive?: boolean; // 是否为当前活跃的对话
+  url?: string; // 完整的页面URL
 }
 
 
 //  聊天存储服务类
 export class ChatStorage {
-  private static readonly PREFIX = 'chat_history_';
+  private static readonly PREFIX = 'chat_history_'; // 本地存储键的前缀
 
   //  从URL中提取主机名作为存储键
   private static getStorageKey(url: string): string | null {
     if (!url) return null;
     try {
-      const hostname = new URL(url).hostname;
-      return `${this.PREFIX}${hostname}`;
+      // 尝试将url解析为完整的URL，提取主机名
+      const parsedUrl = new URL(url);
+      return `${this.PREFIX}${parsedUrl.hostname}`;
     } catch (error) {
-      console.error('无效的URL:', error);
-      return null;
+      // 如果解析失败，假设url已经是主机名
+      console.error('无效的URL，假设是主机名:', error);
+      return `${this.PREFIX}${url}`;
     }
   }
 
-  // 获取对话列表
+  // 根据传入的url，获取对话列表--> 获取某个网站的所有对话记录
   public static getConversationList(url: string):Conversation[] {
     const key = this.getStorageKey(url);
     if (!key) return [];
@@ -54,7 +57,7 @@ export class ChatStorage {
     return [];
   }
 
-  // 获取特定对话
+  // 获取特定对话 --> 用于重命名对话时，根据对话ID获取对话对象
   public static getConversation(url: string, conversationId: string): Conversation | null { 
     const conversations = this.getConversationList(url);
     return conversations.find(conversation => conversation.id === conversationId) || null;
@@ -69,6 +72,7 @@ export class ChatStorage {
       messages: [],
       timestamp: Date.now(),
       isActive: true,
+      url: url, // 存储完整的页面URL-->可以点击跳转到创建该对话的页面
     }
 
     conversations.unshift(newConversation);
@@ -93,6 +97,8 @@ export class ChatStorage {
     const conversations = this.getConversationList(url);
     const index = conversations.findIndex(conv => conv.id === updatedConversation.id);
     if (index !== -1) {
+      // 更新时间戳
+      updatedConversation.timestamp = Date.now();
       conversations[index] = updatedConversation;
       this.saveConversations(url, conversations);
     }
@@ -188,5 +194,47 @@ export class ChatStorage {
     }
     
     return allHistory;
+  }
+
+  // 获取所有对话（不按URL分组）
+  public static getAllConversations(): Array<Conversation & { url: string }> {
+    const allHistory = this.getAllChatHistory();
+    const allConversations: Array<Conversation & { url: string }> = [];
+    
+    // 将所有URL的对话合并为一个扁平数组，并添加所属网站的URL信息
+    Object.entries(allHistory).forEach(([urlKey, conversations]) => {
+      conversations.forEach(conv => {
+        // 优先使用对话对象中存储的完整URL，如果没有则使用从localStorage键中提取的URL
+        const fullUrl = conv.url || urlKey;
+        allConversations.push({ ...conv, url: fullUrl });
+      });
+    });
+    
+    // 按时间戳排序，最新的对话排在前面
+    return allConversations.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  // 根据对话ID查找对话所属的URL
+  public static findConversationUrl(conversationId: string): string | null {
+    try {
+      // 获取所有存储键
+      const keys = Object.keys(localStorage).filter(key => key.startsWith(this.PREFIX));
+      
+      // 遍历所有存储键
+      for (const key of keys) {
+        const data = localStorage.getItem(key);
+        if (data) {
+          const conversations = JSON.parse(data) as Conversation[];
+          if (conversations.some(conv => conv.id === conversationId)) {
+            // 返回主机名
+            return key.replace(this.PREFIX, '');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('查找对话所属的URL失败:', error);
+    }
+    
+    return null;
   }
 }
