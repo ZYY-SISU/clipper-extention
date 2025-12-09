@@ -2,7 +2,7 @@
 console.log('AI剪藏助手：通用智能抓取脚本已就绪');
 
 // ============【类型定义】=================
-import type{ SelectionData, PageMeta, PageData, ImageData, LinkData, ClipContentPayload } from '../types/index';
+import type{ SelectionData, PageMeta, PageData, ImageData, LinkData, ClipContentPayload, HighlightInfo } from '../types/index';
 
 // =============【状态管理】================
 let toolbar: HTMLElement | null = null;
@@ -10,8 +10,20 @@ let selectedData: SelectionData | null = null;
 let toastElement: HTMLElement | null = null;
 let loadingToast: HTMLElement | null = null;
 let multipleSelections: SelectionData[] = []; // 多选支持
-let highlightOverlay: HTMLElement | null = null; // 高亮覆盖层
+// let highlightOverlay: HTMLElement | null = null; // 高亮覆盖层 - 已废弃，改用 highlightedRanges
 let multiSelectionHighlights: HTMLElement[] = []; // 多选高亮元素
+let highlightedRanges: Array<{range: Range, overlay: HTMLElement, id: string}> = []; // 持久高亮列表
+let highlightIdCounter = 0; // 高亮ID计数器
+let contextAwarePanel: HTMLElement | null = null; // 上下文感知浮动窗口
+
+// 🟢 用户行为追踪（用于第三层智能识别）
+let userBehaviorHistory: Array<{
+  timestamp: number;
+  action: 'select' | 'clip' | 'merge' | 'highlight';
+  url: string;
+  selectionCount?: number;
+  selectionText?: string;
+}> = [];
 
 // ✨ [新增] 全局开关状态与悬浮球元素
 let isGlobalActive: boolean = true; // 默认为开启
@@ -19,6 +31,644 @@ let suspensionBall: HTMLElement | null = null;
 
 //  [AI 识图] 缓存最近一次识图结果
 let lastVisionResult: { text?: string; html?: string; structuredData?: unknown; raw?: string } | null = null;
+
+// =============【智能意图识别系统 - 类型定义】================
+// 第一层：识别内容类型
+interface ContentTypeDetection {
+  type: 'code' | 'table' | 'api-doc' | 'product' | 'contact' | 'paragraph' | 'unknown';
+  confidence: number;
+  template?: string;
+  prefillFields?: Record<string, any>;
+}
+
+// 第二层：识别网页类型
+interface PageTypeDetection {
+  type: string;
+  autoActions: Array<{label: string; action: string; autoExecute?: boolean}>;
+}
+
+// 第三层：识别用户行为意图
+interface UserIntentDetection {
+  intent: 'merge' | 'batch-collect' | 'compare' | 'continue-selecting' | 'task-complete' | 'unknown';
+  confidence: number;
+  suggestedAction?: string;
+}
+
+// =============【智能意图识别系统 - 实现函数】================
+// 第一层：识别内容类型 → 自动推荐模板
+function detectContentType(selection: Selection, range: Range): ContentTypeDetection {
+  const selectedText = selection.toString().trim();
+  const container = range.commonAncestorContainer as HTMLElement;
+  
+  // 1. 检测代码片段
+  const codeElements = container.querySelectorAll('pre, code, .highlight, .code-block');
+  if (codeElements.length > 0 || /^[\s\S]*\{[\s\S]*\}$/.test(selectedText) || /function\s+\w+\s*\(/.test(selectedText)) {
+    const codeText = Array.from(codeElements).map(el => el.textContent).join('\n') || selectedText;
+    const language = detectCodeLanguage(codeText);
+    return {
+      type: 'code',
+      confidence: 0.9,
+      template: 'code-snippet',
+      prefillFields: { language, code: codeText, sourceUrl: window.location.href }
+    };
+  }
+  
+  // 2. 检测表格
+  const tableElement = container.closest('table') || container.querySelector('table');
+  if (tableElement) {
+    const tableData = extractTableData(tableElement);
+    return {
+      type: 'table',
+      confidence: 0.95,
+      template: 'table-extract',
+      prefillFields: { headers: tableData.headers, rows: tableData.rows }
+    };
+  }
+  
+  // 3. 检测API文档
+  if (/^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(selectedText) || 
+      container.querySelector('.api-endpoint, .api-doc, [class*="api"]')) {
+    return {
+      type: 'api-doc',
+      confidence: 0.85,
+      template: 'api-doc',
+      prefillFields: {
+        endpoint: selectedText.match(/^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)/)?.[2],
+        method: selectedText.match(/^(GET|POST|PUT|DELETE|PATCH)/)?.[1]
+      }
+    };
+  }
+  
+  // 4. 检测商品信息
+  if (/\d+\.\d+元|¥\d+|价格|加入购物车/i.test(selectedText) ||
+      container.querySelector('.product-info, .price, [class*="product"]')) {
+    return {
+      type: 'product',
+      confidence: 0.8,
+      template: 'ecommerce-product',
+      prefillFields: {
+        price: selectedText.match(/[¥$]\d+\.?\d*/)?.[0],
+        productName: container.querySelector('h1, .product-title')?.textContent || ''
+      }
+    };
+  }
+  
+  // 5. 检测联系方式
+  const phoneRegex = /1[3-9]\d{9}/;
+  const emailRegex = /[\w\.-]+@[\w\.-]+\.\w+/;
+  if (phoneRegex.test(selectedText) || emailRegex.test(selectedText) || 
+      /联系我们|联系方式/i.test(selectedText)) {
+    return {
+      type: 'contact',
+      confidence: 0.9,
+      template: 'contact',
+      prefillFields: {
+        phone: selectedText.match(phoneRegex)?.[0],
+        email: selectedText.match(emailRegex)?.[0]
+      }
+    };
+  }
+  
+  // 6. 普通段落（降低阈值，让普通文本也能被识别）
+  if (selectedText.length > 10) {
+    return {
+      type: 'paragraph',
+      confidence: 0.6, // 降低阈值，让普通段落也能被识别
+      template: 'summary',
+      prefillFields: { title: document.title, summary: selectedText.substring(0, 200), originalText: selectedText }
+    };
+  }
+  
+  // 7. 未知类型（但至少返回一个结果）
+  return {
+    type: 'unknown',
+    confidence: 0.5,
+    template: 'summary',
+    prefillFields: { title: document.title, summary: selectedText.substring(0, 200), originalText: selectedText }
+  };
+}
+
+function detectCodeLanguage(code: string): string {
+  const patterns: Record<string, RegExp> = {
+    'javascript': /function\s+\w+|const\s+\w+\s*=|let\s+\w+\s*=/,
+    'python': /def\s+\w+|import\s+\w+|print\(/,
+    'java': /public\s+class|public\s+static\s+void\s+main/,
+    'html': /<[a-z]+[^>]*>/i,
+    'css': /[a-z-]+\s*:\s*[^;]+;/i,
+    'sql': /SELECT\s+.+\s+FROM/i
+  };
+  for (const [lang, pattern] of Object.entries(patterns)) {
+    if (pattern.test(code)) return lang;
+  }
+  return 'unknown';
+}
+
+function extractTableData(table: HTMLTableElement): { headers: string[], rows: string[][] } {
+  const headers: string[] = [];
+  const rows: string[][] = [];
+  const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
+  if (headerRow) {
+    headerRow.querySelectorAll('th, td').forEach(cell => headers.push(cell.textContent?.trim() || ''));
+  }
+  table.querySelectorAll('tbody tr, tr').forEach((row, idx) => {
+    if (idx === 0 && !table.querySelector('thead')) return;
+    const rowData: string[] = [];
+    row.querySelectorAll('td').forEach(cell => rowData.push(cell.textContent?.trim() || ''));
+    if (rowData.length > 0) rows.push(rowData);
+  });
+  return { headers, rows };
+}
+
+// 第二层：识别网页类型 → 自动调整提取策略
+function detectPageType(): PageTypeDetection {
+  const hostname = window.location.hostname;
+  const pathname = window.location.pathname;
+  
+  // GitHub仓库页
+  if (hostname.includes('github.com') && /\/[^\/]+\/[^\/]+$/.test(pathname)) {
+    return {
+      type: 'github-repo',
+      autoActions: [{ label: '📦 一键提取仓库信息', action: 'extract-github-repo', autoExecute: false }]
+    };
+  }
+  
+  // 技术文档
+  if (hostname.includes('docs.') || pathname.includes('/documentation/') || pathname.includes('/api/')) {
+    return { type: 'tech-doc', autoActions: [{ label: '📚 文档提取模式', action: 'doc-extract-mode', autoExecute: true }] };
+  }
+  
+  // Stack Overflow
+  if (hostname.includes('stackoverflow.com') && pathname.includes('/questions/')) {
+    return { type: 'stackoverflow', autoActions: [{ label: '💡 提取问题+最佳答案', action: 'extract-so-qa', autoExecute: false }] };
+  }
+  
+  // 电商商品页
+  if ((hostname.includes('taobao.com') || hostname.includes('jd.com') || hostname.includes('pdd.com')) &&
+      document.querySelector('.price, [class*="price"], [class*="product"]')) {
+    return { type: 'ecommerce-product', autoActions: [{ label: '🛍️ 提取商品信息', action: 'extract-product-info', autoExecute: false }] };
+  }
+  
+  // 微信公众号文章
+  if (hostname.includes('mp.weixin.qq.com')) {
+    return { type: 'wechat-article', autoActions: [{ label: '📰 提取文章信息', action: 'extract-wechat-article', autoExecute: false }] };
+  }
+  
+  // B站视频
+  if (hostname.includes('bilibili.com') && pathname.includes('/video/')) {
+    return { type: 'bilibili-video', autoActions: [{ label: '🎬 提取视频信息', action: 'extract-bilibili-video', autoExecute: false }] };
+  }
+  
+  return { type: 'general', autoActions: [] };
+}
+
+// 第三层：识别用户行为意图
+function detectUserIntent(): UserIntentDetection {
+  const recentActions = userBehaviorHistory.slice(-5);
+  const currentUrl = window.location.href;
+  
+  // 连续选中多段内容 → 想合并剪藏
+  const recentSelects = recentActions.filter(a => a.action === 'select' && a.url === currentUrl);
+  if (recentSelects.length >= 2) {
+    return { intent: 'merge', confidence: 0.9, suggestedAction: '显示"追加到当前剪藏"按钮' };
+  }
+  
+  // 同一网站连续剪藏多次 → 批量收集
+  const recentClips = recentActions.filter(a => a.action === 'clip');
+  const sameSiteClips = recentClips.filter(a => {
+    try { return new URL(a.url).hostname === new URL(currentUrl).hostname; } catch { return false; }
+  });
+  if (sameSiteClips.length >= 3) {
+    return { intent: 'batch-collect', confidence: 0.85, suggestedAction: '提示"是否开启批量模式？"' };
+  }
+  
+  // 同一页面反复选择不同区域 → 在做对比
+  const selectionsOnPage = recentActions.filter(a => a.action === 'select' && a.url === currentUrl);
+  if (selectionsOnPage.length >= 3) {
+    const hasCompareKeywords = selectionsOnPage.some(a => 
+      a.selectionText && /优点|缺点|对比|比较|vs|versus/i.test(a.selectionText)
+    );
+    if (hasCompareKeywords) {
+      return { intent: 'compare', confidence: 0.8, suggestedAction: '提示"是否创建对比表格？"' };
+    }
+  }
+  
+  // 选中内容后没有立即剪藏 → 可能在犹豫/想继续选
+  const lastSelect = recentActions.find(a => a.action === 'select');
+  if (lastSelect && Date.now() - lastSelect.timestamp > 2000 && Date.now() - lastSelect.timestamp < 10000) {
+    return { intent: 'continue-selecting', confidence: 0.7, suggestedAction: '保持选区高亮，等待追加' };
+  }
+  
+  return { intent: 'unknown', confidence: 0 };
+}
+
+// =============【上下文感知工具函数（旧版，保留兼容）】================
+/**
+ * 检测当前网站类型并返回相关操作建议
+ */
+function detectSiteContext(): { type: string; suggestions: Array<{label: string; action: string; icon: string}> } {
+  const hostname = window.location.hostname;
+  
+  // GitHub
+  if (hostname.includes('github.com')) {
+    return {
+      type: 'github',
+      suggestions: [
+        { label: '提取代码片段', action: 'extract-code', icon: '💻' },
+        { label: '查看README', action: 'view-readme', icon: '📖' },
+        { label: '复制仓库链接', action: 'copy-repo', icon: '🔗' },
+        { label: '查看Issues', action: 'view-issues', icon: '🐛' }
+      ]
+    };
+  }
+  
+  // 技术文档/博客
+  if (hostname.includes('stackoverflow.com') || hostname.includes('medium.com') || 
+      hostname.includes('dev.to') || hostname.includes('juejin.cn') || 
+      hostname.includes('zhihu.com') || hostname.includes('segmentfault.com')) {
+    return {
+      type: 'tech-blog',
+      suggestions: [
+        { label: '提取代码示例', action: 'extract-code', icon: '💻' },
+        { label: '保存为技术笔记', action: 'save-note', icon: '📝' },
+        { label: '翻译内容', action: 'translate', icon: '🌐' },
+        { label: '生成摘要', action: 'summarize', icon: '📄' }
+      ]
+    };
+  }
+  
+  // 视频平台
+  if (hostname.includes('bilibili.com') || hostname.includes('youtube.com') || 
+      hostname.includes('youku.com') || hostname.includes('iqiyi.com')) {
+    return {
+      type: 'video',
+      suggestions: [
+        { label: '提取视频信息', action: 'extract-video', icon: '🎬' },
+        { label: '保存字幕', action: 'save-subtitle', icon: '📝' },
+        { label: '生成视频摘要', action: 'video-summary', icon: '📄' }
+      ]
+    };
+  }
+  
+  // 购物网站
+  if (hostname.includes('taobao.com') || hostname.includes('tmall.com') || 
+      hostname.includes('jd.com') || hostname.includes('amazon.com')) {
+    return {
+      type: 'shopping',
+      suggestions: [
+        { label: '提取商品信息', action: 'extract-product', icon: '🛍️' },
+        { label: '比价', action: 'compare-price', icon: '💰' },
+        { label: '保存到购物清单', action: 'save-wishlist', icon: '📋' }
+      ]
+    };
+  }
+  
+  // 新闻/资讯
+  if (hostname.includes('news.') || hostname.includes('sina.com') || 
+      hostname.includes('163.com') || hostname.includes('qq.com')) {
+    return {
+      type: 'news',
+      suggestions: [
+        { label: '提取关键信息', action: 'extract-key-info', icon: '📰' },
+        { label: '生成新闻摘要', action: 'news-summary', icon: '📄' },
+        { label: '保存到稍后读', action: 'save-later', icon: '📚' }
+      ]
+    };
+  }
+  
+  // 代码相关（检测代码块）
+  const hasCodeBlocks = document.querySelectorAll('pre, code, .highlight').length > 0;
+  if (hasCodeBlocks) {
+    return {
+      type: 'code',
+      suggestions: [
+        { label: '提取代码', action: 'extract-code', icon: '💻' },
+        { label: '格式化代码', action: 'format-code', icon: '✨' },
+        { label: '检查语法', action: 'check-syntax', icon: '✓' }
+      ]
+    };
+  }
+  
+  // 默认建议
+  return {
+    type: 'general',
+    suggestions: [
+      { label: '智能摘要', action: 'summarize', icon: '📄' },
+      { label: '翻译内容', action: 'translate', icon: '🌐' },
+      { label: '提取链接', action: 'extract-links', icon: '🔗' },
+      { label: '保存图片', action: 'save-images', icon: '📷' }
+    ]
+  };
+}
+
+/**
+ * 🟢 创建智能建议浮动窗口（三层智能识别）
+ */
+function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: Range): void {
+  if (contextAwarePanel) {
+    contextAwarePanel.remove();
+  }
+  
+  // 第一层：识别内容类型
+  let contentType: ContentTypeDetection | null = null;
+  let pageType: PageTypeDetection | null = null;
+  let userIntent: UserIntentDetection | null = null;
+  
+  if (selection && range) {
+    contentType = detectContentType(selection, range);
+    console.log('[智能识别] 内容类型:', contentType);
+  }
+  
+  // 第二层：识别网页类型
+  pageType = detectPageType();
+  console.log('[智能识别] 网页类型:', pageType);
+  
+  // 第三层：识别用户行为意图
+  userIntent = detectUserIntent();
+  console.log('[智能识别] 用户意图:', userIntent);
+  
+  // 构建智能建议内容
+  const suggestions: Array<{label: string; action: string; icon: string; autoExecute?: boolean}> = [];
+  
+  // 优先显示内容类型识别结果（降低阈值，让更多内容能被识别）
+  if (contentType && contentType.confidence > 0.5) {
+    const templateMap: Record<string, {label: string; icon: string}> = {
+      'code': { label: `检测到代码片段，推荐使用代码模板`, icon: '💻' },
+      'table': { label: `检测到表格数据，推荐使用表格模板`, icon: '📊' },
+      'api-doc': { label: `检测到API文档，推荐使用API文档模板`, icon: '📡' },
+      'product': { label: `检测到商品信息，推荐使用电商模板`, icon: '🛍️' },
+      'contact': { label: `检测到联系方式，推荐使用联系人模板`, icon: '📞' },
+      'paragraph': { label: `检测到普通段落，推荐使用摘要模板`, icon: '📄' },
+      'unknown': { label: `智能推荐模板`, icon: '✨' }
+    };
+    
+    const templateInfo = templateMap[contentType.type] || { label: '智能推荐模板', icon: '✨' };
+    suggestions.push({
+      label: templateInfo.label,
+      action: `use-template-${contentType.template || 'summary'}`,
+      icon: templateInfo.icon,
+      autoExecute: false
+    });
+  }
+  
+  // 显示网页类型相关操作
+  if (pageType.autoActions.length > 0) {
+    pageType.autoActions.forEach(action => {
+      suggestions.push({
+        label: action.label,
+        action: action.action,
+        icon: action.label.match(/[📦📚💡🛍️📰🎬]/)?.[0] || '✨',
+        autoExecute: action.autoExecute
+      });
+    });
+  }
+  
+  // 显示用户行为意图建议（降低阈值）
+  if (userIntent && userIntent.confidence > 0.5) {
+    const intentMap: Record<string, {label: string; icon: string}> = {
+      'merge': { label: '检测到您在做多选，是否合并剪藏？', icon: '🔗' },
+      'batch-collect': { label: '检测到批量收集，是否开启批量模式？', icon: '📦' },
+      'compare': { label: '检测到对比信息，是否创建对比表格？', icon: '📊' },
+      'continue-selecting': { label: '保持选区高亮，可继续追加选择', icon: '➕' }
+    };
+    
+    const intentInfo = intentMap[userIntent.intent];
+    if (intentInfo) {
+      suggestions.push({
+        label: intentInfo.label,
+        action: `handle-intent-${userIntent.intent}`,
+        icon: intentInfo.icon,
+        autoExecute: false
+      });
+    }
+  }
+  
+  // 🟢 如果没有智能建议，至少显示一个默认建议（确保弹窗总是显示）
+  if (suggestions.length === 0) {
+    // 即使没有识别到特定类型，也显示一个通用建议
+    suggestions.push({
+      label: '💡 智能剪藏建议',
+      action: 'smart-clip',
+      icon: '✨',
+      autoExecute: false
+    });
+  }
+  
+  console.log('[智能识别] 最终建议列表:', suggestions);
+  
+  const panel = document.createElement('div');
+  panel.id = 'sc-context-aware-panel';
+  panel.className = 'sc-context-panel';
+  
+  panel.innerHTML = `
+    <div class="sc-context-header">
+      <span class="sc-context-title">🤖 智能识别</span>
+      <button class="sc-context-close" title="关闭">×</button>
+    </div>
+    <div class="sc-context-suggestions">
+      ${suggestions.map(s => `
+        <div class="sc-context-item" data-action="${s.action}" data-auto="${s.autoExecute ? 'true' : 'false'}">
+          <span class="sc-context-icon">${s.icon}</span>
+          <span class="sc-context-label">${s.label}</span>
+          ${s.autoExecute ? '<span class="sc-auto-badge">自动</span>' : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  
+  // 定位在工具栏下方
+  const toolbarRect = toolbar?.getBoundingClientRect();
+  if (toolbarRect) {
+    panel.style.top = `${toolbarRect.bottom + window.scrollY + 10}px`;
+    panel.style.left = `${toolbarRect.left + window.scrollX}px`;
+  } else {
+    panel.style.top = `${rect.bottom + window.scrollY + 10}px`;
+    panel.style.left = `${rect.left + window.scrollX}px`;
+  }
+  
+  // 关闭按钮
+  panel.querySelector('.sc-context-close')?.addEventListener('click', () => {
+    panel.remove();
+    contextAwarePanel = null;
+  });
+  
+  // 建议项点击 - 自动执行推荐的操作
+  panel.querySelectorAll('.sc-context-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const action = (item as HTMLElement).dataset.action;
+      const autoExecute = (item as HTMLElement).dataset.auto === 'true';
+      
+      if (autoExecute) {
+        // 自动执行
+        executeSmartAction(action || '', contentType, pageType, userIntent);
+      } else {
+        // 用户确认后执行
+        handleSmartAction(action || '', contentType, pageType, userIntent);
+      }
+      
+      panel.remove();
+      contextAwarePanel = null;
+    });
+  });
+  
+  document.body.appendChild(panel);
+  contextAwarePanel = panel;
+  
+  // 5秒后自动关闭（比之前长，因为信息更有价值）
+  setTimeout(() => {
+    if (contextAwarePanel === panel) {
+      panel.remove();
+      contextAwarePanel = null;
+    }
+  }, 5000);
+}
+
+/**
+ * 执行智能操作（自动执行）
+ */
+function executeSmartAction(action: string, contentType: ContentTypeDetection | null, pageType: PageTypeDetection | null, userIntent: UserIntentDetection | null): void {
+  // 实现自动执行逻辑
+  if (action.startsWith('use-template-')) {
+    const templateId = action.replace('use-template-', '');
+    showToast(`已自动切换到模板: ${templateId}`, 'success');
+    // 这里可以发送消息到侧边栏，自动选择模板
+    chrome.runtime.sendMessage({ 
+      type: 'AUTO_SELECT_TEMPLATE', 
+      templateId: templateId,
+      prefillFields: contentType?.prefillFields 
+    }).catch(() => {});
+  }
+}
+
+/**
+ * 处理智能操作（需要用户确认）
+ */
+function handleSmartAction(action: string, contentType: ContentTypeDetection | null, _pageType: PageTypeDetection | null, userIntent: UserIntentDetection | null): void {
+  if (action.startsWith('use-template-')) {
+    const templateId = action.replace('use-template-', '');
+    showToast(`推荐使用模板: ${templateId}，请在侧边栏确认`, 'info');
+    chrome.runtime.sendMessage({ 
+      type: 'SUGGEST_TEMPLATE', 
+      templateId: templateId,
+      prefillFields: contentType?.prefillFields 
+    }).catch(() => {});
+  } else if (action.startsWith('handle-intent-')) {
+    const intent = action.replace('handle-intent-', '');
+    handleUserIntent(intent, userIntent);
+  } else if (action === 'smart-clip') {
+    // 默认智能剪藏
+    if (selectedData) {
+      clipSelection();
+      showToast('已执行智能剪藏', 'success');
+    }
+  } else {
+    handleContextAction(action);
+  }
+}
+
+/**
+ * 处理用户意图
+ */
+function handleUserIntent(intent: string, userIntent: UserIntentDetection | null): void {
+  switch (intent) {
+    case 'merge':
+      // 显示合并选项
+      if (multipleSelections.length > 1) {
+        mergeSelections();
+      } else {
+        showToast('请继续选择其他内容以合并', 'info');
+      }
+      break;
+    case 'batch-collect':
+      showToast('批量模式功能开发中...', 'info');
+      break;
+    case 'compare':
+      // 创建对比表格
+      createCompareTable();
+      break;
+    case 'continue-selecting':
+      showToast('选区已保持高亮，可继续追加选择', 'info');
+      break;
+  }
+}
+
+/**
+ * 创建对比表格
+ */
+function createCompareTable(): void {
+  const recentSelections = userBehaviorHistory
+    .filter(a => a.action === 'select' && a.url === window.location.href)
+    .slice(-3);
+  
+  if (recentSelections.length < 2) {
+    showToast('需要至少2个选择才能创建对比表格', 'info');
+    return;
+  }
+  
+  // 提取对比项
+  const compareItems = recentSelections.map((sel, idx) => {
+    const title = sel.selectionText?.match(/^[^：:]+[：:]?/)?.[0] || `项目${idx + 1}`;
+    const content = sel.selectionText?.replace(/^[^：:]+[：:]?\s*/, '') || sel.selectionText || '';
+    return { title, content };
+  });
+  
+  // 生成表格Markdown
+  const tableMarkdown = `| 项目 | 内容 |\n|------|------|\n${compareItems.map(item => `| ${item.title} | ${item.content} |`).join('\n')}`;
+  
+  // 发送到侧边栏
+  chrome.runtime.sendMessage({
+    type: 'CLIP_CONTENT_UPDATED',
+    payload: {
+      text: tableMarkdown,
+      html: '',
+      images: [],
+      links: [],
+      meta: { url: window.location.href, title: document.title },
+      sourceUrl: window.location.href
+    }
+  }).catch(() => {});
+  
+  showToast('已创建对比表格', 'success');
+}
+
+/**
+ * 处理上下文感知操作
+ */
+function handleContextAction(action: string): void {
+  switch (action) {
+    case 'extract-code':
+      // 提取代码
+      if (selectedData) {
+        const codeBlocks = document.querySelectorAll('pre code, .highlight, code');
+        if (codeBlocks.length > 0) {
+          const codeText = Array.from(codeBlocks).map(cb => cb.textContent).join('\n\n');
+          showToast('代码已提取到剪贴板', 'success');
+          navigator.clipboard.writeText(codeText);
+        }
+      }
+      break;
+    case 'summarize':
+      // 触发智能摘要
+      if (selectedData) {
+        clipSelection();
+        showToast('正在生成摘要...', 'info');
+      }
+      break;
+    case 'translate':
+      // 翻译（可以调用翻译API）
+      showToast('翻译功能开发中...', 'info');
+      break;
+    case 'extract-links':
+      // 提取链接
+      if (selectedData && selectedData.links.length > 0) {
+        const linksText = selectedData.links.map(l => l.href).join('\n');
+        navigator.clipboard.writeText(linksText);
+        showToast(`已复制 ${selectedData.links.length} 个链接`, 'success');
+      }
+      break;
+    default:
+      showToast(`执行操作: ${action}`, 'info');
+  }
+}
 
 // =============【工具函数 (保持原样)】================
 function resolveUrl(url: string, baseUrl: string = window.location.href): string {
@@ -771,9 +1421,198 @@ function createToolbar(): HTMLElement {
     }
     body .sc-toast.show { opacity: 1 !important; }
     
-    /* 高亮层 */
-    .sc-highlight-overlay { position: absolute !important; background-color: rgba(255, 235, 59, 0.3) !important; border: 2px solid rgba(255, 193, 7, 0.6) !important; pointer-events: none !important; z-index: 2147483646 !important; }
-    .sc-multi-selection-highlight { position: absolute !important; background-color: rgba(139, 92, 246, 0.25) !important; border: 2px dashed rgba(139, 92, 246, 0.8) !important; pointer-events: none !important; z-index: 2147483645 !important; }
+    /* 高亮覆盖层样式 */
+    .sc-highlight-overlay {
+      position: absolute !important;
+      background-color: rgba(255, 235, 59, 0.3) !important;
+      border: 2px solid rgba(255, 193, 7, 0.6) !important;
+      border-radius: 4px !important;
+      pointer-events: none !important;
+      z-index: 2147483646 !important;
+      transition: opacity 0.2s ease !important;
+    }
+    
+    /* 持久高亮样式 - 更明显的视觉效果 */
+    .sc-highlight-overlay.sc-persistent-highlight {
+      background-color: rgba(255, 235, 59, 0.4) !important;
+      border: 2px solid rgba(255, 193, 7, 0.8) !important;
+      box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3) !important;
+    }
+    
+    /* 多选高亮样式 */
+    .sc-multi-selection-highlight {
+      position: absolute !important;
+      background-color: rgba(139, 92, 246, 0.25) !important;
+      border: 2px dashed rgba(139, 92, 246, 0.8) !important;
+      border-radius: 4px !important;
+      pointer-events: none !important;
+      z-index: 2147483645 !important;
+      transition: all 0.2s ease !important;
+    }
+    
+    .sc-multi-selection-highlight::before {
+      content: attr(data-index) !important;
+      position: absolute !important;
+      top: -8px !important;
+      left: -8px !important;
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%) !important;
+      color: white !important;
+      width: 20px !important;
+      height: 20px !important;
+      border-radius: 50% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) !important;
+    }
+    
+    /* 子菜单按钮样式 - 与主按钮一致，横向排列 */
+    #smart-clipper-toolbar .sc-submenu .submenu-item {
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+      border: 1px solid rgba(226, 232, 240, 0.6) !important;
+      border-radius: 14px !important;
+      color: #475569 !important;
+      padding: 10px 18px !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      white-space: nowrap !important;
+      min-width: 100px !important;
+      justify-content: center !important;
+      flex-shrink: 0 !important;
+    }
+    
+    #smart-clipper-toolbar .sc-submenu .submenu-item:hover {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+      color: white !important;
+      transform: translateY(-2px) scale(1.02) !important;
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35), 0 2px 8px rgba(37, 99, 235, 0.2) !important;
+    }
+    
+    /* 合并按钮特殊样式 */
+    #smart-clipper-toolbar .sc-submenu .submenu-item.merge-btn {
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%) !important;
+      color: white !important;
+      border-color: rgba(124, 58, 237, 0.3) !important;
+    }
+    
+    #smart-clipper-toolbar .sc-submenu .submenu-item.merge-btn:hover {
+      background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%) !important;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4) !important;
+    }
+    
+    /* 🟢 上下文感知浮动窗口样式 */
+    .sc-context-panel {
+      position: fixed !important;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%) !important;
+      border: 1px solid rgba(226, 232, 240, 0.9) !important;
+      border-radius: 16px !important;
+      padding: 12px !important;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+      z-index: 2147483649 !important;
+      min-width: 240px !important;
+      max-width: 320px !important;
+      backdrop-filter: blur(20px) saturate(180%) !important;
+      animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    
+    .sc-context-header {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 8px !important;
+      padding-bottom: 8px !important;
+      border-bottom: 1px solid rgba(226, 232, 240, 0.5) !important;
+    }
+    
+    .sc-context-title {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      color: #1e293b !important;
+    }
+    
+    .sc-context-close {
+      width: 20px !important;
+      height: 20px !important;
+      border: none !important;
+      background: transparent !important;
+      color: #64748b !important;
+      cursor: pointer !important;
+      font-size: 18px !important;
+      line-height: 1 !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 4px !important;
+      transition: all 0.2s !important;
+    }
+    
+    .sc-context-close:hover {
+      background: rgba(226, 232, 240, 0.5) !important;
+      color: #1e293b !important;
+    }
+    
+    .sc-context-suggestions {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+    }
+    
+    .sc-context-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 10px 12px !important;
+      border-radius: 10px !important;
+      cursor: pointer !important;
+      transition: all 0.2s !important;
+      background: rgba(248, 250, 252, 0.8) !important;
+      border: 1px solid transparent !important;
+    }
+    
+    .sc-context-item:hover {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+      color: white !important;
+      transform: translateX(4px) !important;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important;
+    }
+    
+    .sc-context-icon {
+      font-size: 18px !important;
+      flex-shrink: 0 !important;
+    }
+    
+    .sc-context-label {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      color: inherit !important;
+    }
+    
+    .sc-auto-badge {
+      margin-left: auto !important;
+      padding: 2px 6px !important;
+      background: rgba(16, 185, 129, 0.1) !important;
+      color: #10b981 !important;
+      border-radius: 4px !important;
+      font-size: 10px !important;
+      font-weight: 600 !important;
+    }
   `;
   
   const existingStyle = document.querySelector('style[data-smart-clipper="true"]');
@@ -801,7 +1640,7 @@ function createToolbar(): HTMLElement {
           </svg>
           <span>整页</span>
         </button>
-        <button id="sc-merge-selections" title="合并多个选区 (Ctrl+M)" class="submenu-item merge-btn">
+        <button id="sc-merge-selections" title="按住ctrl用鼠标选择不同选区以合并" class="submenu-item merge-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M8 18h8M8 12h8M8 6h8"></path>
             <circle cx="4" cy="6" r="1.5"></circle>
@@ -1261,9 +2100,60 @@ function extractFullPageData(): PageData {
   };
 }
 
+/**
+ * 将SelectionData或PageData转换为ClipContentPayload格式 - 增强版
+ * 包含高亮信息，并将高亮文本正确格式化为 Markdown 高亮语法
+ */
 function convertToClipPayload(data: SelectionData | PageData): ClipContentPayload {
   let markdownText = data.text;
   
+  // 检查是否有高亮信息需要包含
+  const hasHighlights = highlightedRanges.length > 0;
+  
+  if (hasHighlights) {
+    // 收集所有高亮文本及其在原文中的位置
+    const highlightTexts: Array<{ text: string; index: number }> = [];
+    
+    highlightedRanges.forEach(hr => {
+      try {
+        const highlightText = hr.range.toString().trim();
+        if (highlightText && highlightText.length > 0) {
+          // 在原文中查找高亮文本的位置（处理可能的重复）
+          let searchIndex = 0;
+          while (true) {
+            const foundIndex = markdownText.indexOf(highlightText, searchIndex);
+            if (foundIndex === -1) break;
+            
+            // 检查这个位置是否已经被标记为高亮
+            const beforeText = markdownText.substring(Math.max(0, foundIndex - 2), foundIndex);
+            const afterText = markdownText.substring(foundIndex + highlightText.length, foundIndex + highlightText.length + 2);
+            
+            // 如果前后不是 == 标记，说明这是新的高亮位置
+            if (!beforeText.endsWith('==') && !afterText.startsWith('==')) {
+              highlightTexts.push({ text: highlightText, index: foundIndex });
+              break; // 只标记第一个匹配的位置
+            }
+            searchIndex = foundIndex + 1;
+          }
+        }
+      } catch (e) {
+        console.warn('处理高亮范围失败:', e);
+      }
+    });
+    
+    // 按位置从后往前排序，避免替换时位置偏移
+    highlightTexts.sort((a, b) => b.index - a.index);
+    
+    // 应用高亮标记（从后往前替换，避免位置偏移）
+    highlightTexts.forEach(({ text, index }) => {
+      // 使用 Markdown 高亮语法 ==文本==
+      markdownText = markdownText.substring(0, index) + 
+                     `==${text}==` + 
+                     markdownText.substring(index + text.length);
+    });
+  }
+  
+  // 添加图片信息 - 增强展示
   if (data.images && data.images.length > 0) {
     markdownText += `\n\n## 📷 图片 (${data.images.length}张)\n\n`;
     data.images.slice(0, 10).forEach((img, idx) => {
@@ -1278,13 +2168,30 @@ function convertToClipPayload(data: SelectionData | PageData): ClipContentPayloa
     });
   }
 
+  // 构建高亮信息（用于后端存储和后续处理）
+  const highlightInfo = hasHighlights ? highlightedRanges.map(hr => {
+    try {
+      return {
+        id: hr.id,
+        text: hr.range.toString().trim(),
+        startOffset: hr.range.startOffset,
+        endOffset: hr.range.endOffset,
+        startContainer: hr.range.startContainer.nodeName,
+        endContainer: hr.range.endContainer.nodeName
+      };
+    } catch {
+      return null;
+    }
+  }).filter((h): h is HighlightInfo => h !== null) : undefined;
+
   return {
     text: markdownText,
     html: data.html,
     images: data.images,
     links: data.links,
     meta: data.meta,
-    sourceUrl: data.meta.url
+    sourceUrl: data.meta.url,
+    highlights: highlightInfo // 新增：高亮信息
   };
 }
 
@@ -1337,8 +2244,30 @@ function handleMouseUp(e: MouseEvent): void {
       
       updateMergeButton();
       showToolbar(rect);
+      
+      // 🟢 显示智能建议浮动窗口（三层智能识别）
+      setTimeout(() => {
+        // 记录用户行为
+        userBehaviorHistory.push({
+          timestamp: Date.now(),
+          action: 'select',
+          url: window.location.href,
+          selectionCount: multipleSelections.length + 1,
+          selectionText: selectedText
+        });
+        // 只保留最近20条记录
+        if (userBehaviorHistory.length > 20) {
+          userBehaviorHistory = userBehaviorHistory.slice(-20);
+        }
+        
+        createContextAwarePanel(rect, selection, range);
+      }, 300);
     } else {
       hideToolbar();
+      if (contextAwarePanel) {
+        contextAwarePanel.remove();
+        contextAwarePanel = null;
+      }
     }
   }, 10);
 }
@@ -1366,6 +2295,26 @@ async function clipSelection() {
   void openSidebar(); // 立即触发侧边栏，保持用户手势
   await sendToBackground(payload);
   
+  // 清除已剪藏的高亮（只清除与当前选区相关的高亮）
+  const selection = window.getSelection();
+  if (selection && selection.rangeCount > 0) {
+    const currentRangeText = selection.getRangeAt(0).toString().trim();
+    highlightedRanges = highlightedRanges.filter(hr => {
+      try {
+        const hrText = hr.range.toString().trim();
+        if (hrText === currentRangeText) {
+          hr.overlay.remove();
+          return false; // 移除已剪藏的高亮
+        }
+        return true; // 保留其他高亮
+      } catch {
+        hr.overlay.remove();
+        return false; // 移除无效的高亮
+      }
+    });
+  }
+  
+  // 清除多选状态
   multipleSelections = [];
   updateMergeButton();
 }
@@ -1378,6 +2327,7 @@ async function clipFullPage() {
   await sendToBackground(payload);
 }
 
+// 高亮选中内容 - 持久高亮版本
 function highlightSelection() {
   if (!selectedData) {
     showToast('请先选择要高亮的内容', 'warning');
@@ -1388,30 +2338,79 @@ function highlightSelection() {
   if (!selection || selection.rangeCount === 0) return;
 
   const range = selection.getRangeAt(0);
+  
+  // 检查是否已经高亮过这个区域（避免重复高亮）
+  const rangeText = range.toString().trim();
+  const alreadyHighlighted = highlightedRanges.some(hr => {
+    try {
+      return hr.range.toString().trim() === rangeText;
+    } catch {
+      return false;
+    }
+  });
+  
+  if (alreadyHighlighted) {
+    showToast('该内容已高亮', 'info');
+    return;
+  }
+  
+  // 创建持久高亮
+  const highlightId = `sc-highlight-${++highlightIdCounter}`;
   const rect = range.getBoundingClientRect();
   
-  if (highlightOverlay) highlightOverlay.remove();
+  // 创建高亮覆盖层
+  const overlay = document.createElement('div');
+  overlay.className = 'sc-highlight-overlay sc-persistent-highlight';
+  overlay.setAttribute('data-highlight-id', highlightId);
+  overlay.style.top = `${rect.top + window.scrollY}px`;
+  overlay.style.left = `${rect.left + window.scrollX}px`;
+  overlay.style.width = `${rect.width}px`;
+  overlay.style.height = `${rect.height}px`;
+  document.body.appendChild(overlay);
   
-  highlightOverlay = document.createElement('div');
-  highlightOverlay.className = 'sc-highlight-overlay';
-  highlightOverlay.style.top = `${rect.top + window.scrollY}px`;
-  highlightOverlay.style.left = `${rect.left + window.scrollX}px`;
-  highlightOverlay.style.width = `${rect.width}px`;
-  highlightOverlay.style.height = `${rect.height}px`;
-  document.body.appendChild(highlightOverlay);
+  // 保存高亮信息
+  highlightedRanges.push({
+    range: range.cloneRange(), // 克隆range以便后续使用
+    overlay: overlay,
+    id: highlightId
+  });
   
-  showToast('已高亮选中内容', 'success');
+  showToast('已高亮选中内容（将保持直到剪藏）', 'success');
   hideToolbar();
-  
-  setTimeout(() => {
-    if (highlightOverlay) {
-      highlightOverlay.style.opacity = '0';
-      setTimeout(() => {
-        highlightOverlay?.remove();
-        highlightOverlay = null;
-      }, 200);
+}
+
+// 更新所有高亮位置（响应滚动和窗口大小变化）
+function updateAllHighlightPositions() {
+  highlightedRanges.forEach(hr => {
+    try {
+      const rect = hr.range.getBoundingClientRect();
+      hr.overlay.style.top = `${rect.top + window.scrollY}px`;
+      hr.overlay.style.left = `${rect.left + window.scrollX}px`;
+      hr.overlay.style.width = `${rect.width}px`;
+      hr.overlay.style.height = `${rect.height}px`;
+    } catch (e) {
+      // Range可能已失效，移除高亮
+      hr.overlay.remove();
+      highlightedRanges = highlightedRanges.filter(h => h.id !== hr.id);
     }
-  }, 3000);
+  });
+}
+
+// 清除所有高亮
+function clearAllHighlights() {
+  highlightedRanges.forEach(hr => {
+    hr.overlay.remove();
+  });
+  highlightedRanges = [];
+}
+
+// 清除指定高亮
+function clearHighlight(highlightId: string) {
+  const index = highlightedRanges.findIndex(hr => hr.id === highlightId);
+  if (index !== -1) {
+    highlightedRanges[index].overlay.remove();
+    highlightedRanges.splice(index, 1);
+  }
 }
 
 async function mergeSelections() {
@@ -1485,7 +2484,7 @@ function updateMergeButton() {
       mergeBtn.title = `合并 ${multipleSelections.length} 个选区 (Ctrl+M)`;
       submenu.style.display = 'flex';
     } else {
-      mergeBtn.title = '合并多个选区 (Ctrl+M) - 请先选择多个选区';
+      mergeBtn.title = '按住ctrl用鼠标选择不同选区以合并';
     }
   }
 }
@@ -1630,9 +2629,37 @@ function init() {
         showToolbar(selection.getRangeAt(0).getBoundingClientRect());
       } else hideToolbar();
     }
+    // 更新所有高亮位置
+    updateAllHighlightPositions();
   };
   window.addEventListener('scroll', reposition, true);
   window.addEventListener('resize', reposition);
+  
+  // 监听页面卸载，清除所有高亮
+  window.addEventListener('beforeunload', () => {
+    clearAllHighlights();
+  });
+  
+  // 监听页面可见性变化，如果页面隐藏则清除高亮
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearAllHighlights();
+    }
+  });
+  
+  // 添加窗口大小变化监听，确保工具栏位置正确
+  window.addEventListener('resize', () => {
+    if (toolbar && toolbar.classList.contains('visible') && selectedData) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        showToolbar(rect);
+      } else {
+        hideToolbar();
+      }
+    }
+  });
 
   // 4. 绑定工具栏按钮事件
   toolbar.querySelector('#sc-clip-selection')?.addEventListener('click', clipSelection);
@@ -1667,7 +2694,17 @@ function init() {
 }
 
 // ==================【消息监听】========================
-chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
+chrome.runtime.onMessage.addListener((request: any, _, sendResponse) => {
+  // 处理清除所有高亮的消息
+  if (request.type === 'CLEAR_ALL_HIGHLIGHTS') {
+    clearAllHighlights();
+    clearMultiSelectionHighlights();
+    hideToolbar();
+    sendResponse({ status: 'success' });
+    return true;
+  }
+  
+  // 其他消息处理...
   // 请求页面内容
   if (request.type === 'REQUEST_CONTENT') {
     const pageData = extractUniversalContent();

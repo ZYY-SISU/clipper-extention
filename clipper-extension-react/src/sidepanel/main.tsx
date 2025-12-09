@@ -9,9 +9,15 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Popup />
-  </React.StrictMode>,
-)
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  console.error('[SidePanel] 找不到 root 元素！');
+} else {
+  console.log('[SidePanel] 开始渲染组件...');
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <Popup />
+    </React.StrictMode>,
+  );
+}
 

@@ -3,12 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import {
   FileText, Table, CheckSquare, Sparkles, Bot,
-  Send, MessageSquare, ChevronDown, Check, Zap,
-  Brain ,Globe, PlusCircle, Menu, X,
+  Star, Send, MessageSquare, ChevronDown, Check, Zap,
+  Brain ,Globe, PlusCircle, History, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
-  Video, Trash2, Edit2, Sun, Moon, Music, StickyNote
+  Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
+  Download, ChevronUp, FileSpreadsheet
 } from 'lucide-react'; 
-import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload } from '../types/index';
+import type{ requestType, senderType, sendResponseType, templateType, UserConfig, SummaryType, VideoType, TechDocType, McpToolDefinition, ClipContentPayload, ImageData, LinkData, HighlightInfo } from '../types/index';
 import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
@@ -26,9 +27,26 @@ function SidePanel() {
   // --- 状态管理 ---
   // ✨ 控制面板显示/隐藏 (默认显示)
   const [isVisible, setIsVisible] = useState(true);
+  
+  // 调试：确保组件正确挂载
+  useEffect(() => {
+    console.log('[SidePanel] 组件已挂载，isVisible:', isVisible);
+  }, []);
 
   const [view, setView] = useState<'clipper' | 'chat'>('clipper');
   const [showHistory, setShowHistory] = useState(false);
+  const [content, setContent] = useState('');
+  const [clipImages, setClipImages] = useState<Array<ImageData>>([]); // 新增：剪藏的图片
+  const [clipLinks, setClipLinks] = useState<Array<LinkData>>([]); // 新增：剪藏的链接
+  const [clipHighlights, setClipHighlights] = useState<Array<HighlightInfo>>([]); // 新增：高亮信息
+  const [linksExpanded, setLinksExpanded] = useState(false); // 链接展开状态
+  const [imagesExpanded, setImagesExpanded] = useState(false); // 图片展开状态
+  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);// 🟢 1. 新增状态:用于存储 AI 分析出来的原始结构化数据，以便发给飞书
+  const [isSaving, setIsSaving] = useState(false);// 🟢 2. 新增状态：控制导出按钮的 Loading 状态
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
+  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
+  // const [isInitializing, setIsInitializing] = useState(false); // 初始化 Loading（未使用） // 🟢 [新增] 存储用户填写的飞书多维表格链接
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -41,14 +59,7 @@ function SidePanel() {
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
 
-  const [content, setContent] = useState('');
-  const [structuredData, setStructuredData] = useState<SummaryType | VideoType | TechDocType | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [singleExportStatus, setSingleExportStatus] = useState<{messageId: number | null, status: 'idle' | 'success', tableUrl?: string}>({messageId: null, status: 'idle'});
-  const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string,open_id: string;} | null>(null);
-  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [, setIsInitializing] = useState(false);
   
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
@@ -125,7 +136,32 @@ function SidePanel() {
     const handleMessage = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
       if (request.type === 'TOGGLE_PANEL') {
         // 收到信号，切换状态 (显示 -> 隐藏，隐藏 -> 显示)
-        setIsVisible(prev => !prev);
+        const newVisible = !isVisible;
+        setIsVisible(newVisible);
+        
+        // 如果隐藏侧边栏，清除所有高亮和选区高亮
+        if (!newVisible) {
+          chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+            if (tab?.id) {
+              chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_ALL_HIGHLIGHTS' }).catch(() => {});
+            }
+          });
+        }
+        
+        sendResponse({ status: 'success' });
+      } else if (request.type === 'CLIP_CONTENT') {
+        setContent(request.payload.text || request.payload.html || '');
+        // 保存图片和链接信息
+        if (request.payload.images) {
+          setClipImages(request.payload.images);
+        }
+        if (request.payload.links) {
+          setClipLinks(request.payload.links);
+        }
+        // 保存高亮信息
+        if (request.payload.highlights) {
+          setClipHighlights(request.payload.highlights);
+        }
         sendResponse({ status: 'success' });
       }
     };
@@ -169,28 +205,58 @@ function SidePanel() {
   }, []);
 
   useEffect(() => {
-    const handleClipContentUpdate = (request: requestType) => {
+    const handleClipContentUpdate = (request: requestType, _: senderType, sendResponse: sendResponseType) => {
       if (request.type === 'CLIP_CONTENT_UPDATED') {
-        const payload = request.payload as ClipContentPayload;
-        if (payload) {
-          const nextContent = payload.text || payload.html || '';
-          if (nextContent) {
-            setContent(nextContent);
-            setStructuredData(null);
-            setView('clipper');
+        try {
+          const payload = request.payload as ClipContentPayload;
+          if (payload) {
+            const nextContent = payload.text || payload.html || '';
+            if (nextContent) {
+              setContent(nextContent);
+              setStructuredData(null);
+              setView('clipper');
+            }
+            // 修复：同时更新图片和链接信息
+            if (payload.images) {
+              setClipImages(payload.images);
+            }
+            if (payload.links) {
+              setClipLinks(payload.links);
+            }
+            if (payload.highlights) {
+              setClipHighlights(payload.highlights);
+            }
           }
+          sendResponse({ status: 'success' });
+        } catch (error) {
+          console.error('处理剪藏内容更新失败:', error);
+          sendResponse({ status: 'error', message: error instanceof Error ? error.message : '未知错误' });
         }
       }
+      return true; // 保持消息通道开启
     };
 
     chrome.runtime.onMessage.addListener(handleClipContentUpdate);
-    return () => chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+    return () => {
+      try {
+        chrome.runtime.onMessage.removeListener(handleClipContentUpdate);
+      } catch (error) {
+        // 忽略扩展上下文失效的错误（开发环境常见）
+        if (error instanceof Error && !error.message.includes('Extension context invalidated')) {
+          console.error('移除消息监听器失败:', error);
+        }
+      }
+    };
   }, []);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_LAST_CLIP' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn('获取最近一次剪藏失败:', chrome.runtime.lastError.message);
+        const errorMsg = chrome.runtime.lastError.message;
+        // 忽略扩展上下文失效的错误（开发环境常见）
+        if (errorMsg && !errorMsg.includes('Extension context invalidated')) {
+          console.warn('获取最近一次剪藏失败:', errorMsg);
+        }
         return;
       }
 
@@ -201,6 +267,16 @@ function SidePanel() {
           setContent(nextContent);
           setStructuredData(null);
           setView('clipper');
+        }
+        // 修复：同时加载图片和链接信息
+        if (payload.images) {
+          setClipImages(payload.images);
+        }
+        if (payload.links) {
+          setClipLinks(payload.links);
+        }
+        if (payload.highlights) {
+          setClipHighlights(payload.highlights);
         }
       }
     });
@@ -683,10 +759,39 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
+      // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
+      let finalStructuredData = { ...structuredData };
+      
+      // 检查原始内容中是否有高亮格式
+      if (content && content.includes('==')) {
+        // 如果 summary 字段存在且是字符串，检查是否需要应用高亮格式
+        // AI 分析可能会移除高亮格式，我们需要从原始内容中恢复
+        if (finalStructuredData && 'summary' in finalStructuredData && typeof finalStructuredData.summary === 'string') {
+          // 从原始内容中提取高亮文本，并尝试应用到 summary 中
+          // 使用正则表达式查找所有高亮文本
+          const highlightMatches = content.match(/==([^=]+)==/g);
+          if (highlightMatches && highlightMatches.length > 0) {
+            // 如果 summary 中包含高亮文本（去掉 == 标记后），就应用高亮格式
+            highlightMatches.forEach(highlight => {
+              const textWithoutMarkers = highlight.replace(/==/g, '');
+              if (finalStructuredData && 'summary' in finalStructuredData && typeof finalStructuredData.summary === 'string') {
+                // 如果 summary 中包含这个文本但没有高亮标记，就添加高亮标记
+                if (finalStructuredData.summary.includes(textWithoutMarkers) && !finalStructuredData.summary.includes(highlight)) {
+                  finalStructuredData.summary = finalStructuredData.summary.replace(
+                    new RegExp(textWithoutMarkers.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                    highlight
+                  );
+                }
+              }
+            });
+          }
+        }
+      }
+
       const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...structuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+        body: JSON.stringify({ ...finalStructuredData, url: tab.url || '', userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
       });
       const result = await response.json();
       
@@ -708,14 +813,16 @@ function SidePanel() {
     if (!message.templateId) return alert('此消息没有关联的模板信息');
     if (!userInfo || !userInfo.token) return alert(t('notConnected'));
 
-    if (userConfig && userConfig.userId !== userInfo.open_id) {
+    if (userConfig && userInfo.open_id && userConfig.userId !== userInfo.open_id) {
       alert(`配置冲突！\n当前配置属于：${userConfig.name}\n当前登录用户：${userInfo.name}\n\n系统将自动重新初始化...`);
-      await checkAndInitConfig(userInfo); // 强制重新初始化
+      if (userInfo.open_id) {
+        await checkAndInitConfig({ ...userInfo, open_id: userInfo.open_id }); // 强制重新初始化
+      }
       return;
     }
 
-    if (!userConfig) {
-       await checkAndInitConfig(userInfo);
+    if (!userConfig && userInfo.open_id) {
+       await checkAndInitConfig({ ...userInfo, open_id: userInfo.open_id });
        return;
     }
 
@@ -737,6 +844,10 @@ function SidePanel() {
         templateId: templateIdToUse,
         url: tab.url || '',
         notes: message.notes,
+        // 新增：图片、链接、高亮信息
+        images: clipImages.length > 0 ? clipImages : undefined,
+        links: clipLinks.length > 0 ? clipLinks : undefined,
+        highlights: clipHighlights.length > 0 ? clipHighlights : undefined,
       };
 
       const response = await fetch('http://localhost:3000/api/save', {
@@ -760,6 +871,116 @@ function SidePanel() {
     finally { setIsSaving(false); }
   };
 
+
+  // --- 视图 2: 对话列表（已废弃，使用 renderHistoryDrawer） ---
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderConversationsView = () => (
+    <div className="conversations-container">
+      <div className="conversations-header">
+        <h3>聊天记录</h3>
+        <button 
+          className="new-conversation-btn"
+          onClick={() => handleNewConversation()}
+        >
+          <PlusCircle size={18} />
+        </button>
+      </div>
+      <div className="conversations-list">
+        {conversations.map((conversation) => (
+          <div
+            key={conversation.id}
+            className={`conversation-item ${currentConversationId === conversation.id ? 'active' : ''}`}
+            onClick={() => handleSwitchConversation(conversation.id)}
+          >
+            <div className="conversation-title">
+              {conversation.title || '新对话'}
+            </div>
+            <div className="conversation-preview">
+              {conversation && conversation.messages && conversation.messages.length > 0 ? 
+                (conversation.messages[conversation.messages.length - 1].text.substring(0, 50) + '...') : 
+                '暂无消息'}
+            </div>
+            <div className="conversation-time">
+              {new Date(conversation.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ---新增 视图 3: 设置界面（已废弃，使用 renderSettingsModal） ---
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderSettings = () => (
+    <div className="container">
+      <div className="section-title">设置目标表格</div>
+      
+      <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ marginBottom: '8px', fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+          飞书多维表格链接
+        </div>
+       
+        <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+          ℹ️ 请打开你的飞书多维表格，直接复制浏览器顶部的完整地址栏链接粘贴到这里。
+        </div>
+      </div>
+
+      <button
+        onClick={() => setShowSettings(false)} // 点击保存并返回
+        style={{
+          marginTop: '20px',
+          width: '100%',
+          padding: '10px',
+          background: '#3370ff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600'
+        }}
+      >
+        保存并返回
+      </button>
+
+
+      {/* 🟢 [新增] 红色重置按钮 */}
+      <button
+        onClick={async () => {
+          if (confirm("确定要重置吗？这将清除当前的表格绑定。\n下次同步时，系统将为你创建一个全新的飞书表格。")) {
+            // 1. 清除 Chrome 本地存储
+            await chrome.storage.sync.remove(['clipper_conf']);
+            // 2. 清除 React 状态
+            setUserConfig(null);
+            //setBitableUrl('');
+            // 3. 关闭设置页
+            setShowSettings(false);
+            alert("✅ 重置成功！\n请重新点击【存入飞书】或【个人用户】头像，系统会自动为你创建新表格。");
+          }
+        }}
+        style={{
+          marginTop: '12px',
+          width: '100%',
+          padding: '10px',
+          background: 'transparent',
+          color: '#ef4444', // 警示红
+          border: '1px solid #ef4444',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          fontSize: '13px'
+        }}
+      >
+        重置/重新创建表格
+      </button>
+
+
+
+    </div>
+  );
+
+
+
+  // 新建对话
   const handleNewConversation = () => {
     if (!currentUrl) return;
     const newConvo = ChatStorage.createConversation(currentUrl);
@@ -931,6 +1152,224 @@ function SidePanel() {
       <div className="preview-card">
         <textarea className="preview-textarea" value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('previewPlaceholder')} />
       </div>
+
+      {/* 新增：链接展示框 */}
+      {clipLinks.length > 0 && (
+        <>
+          <div className="section-title">
+            <span>🔗 链接 ({clipLinks.length}个)</span>
+            <button 
+              className="export-excel-btn"
+              onClick={() => {
+                // 导出链接为Excel
+                const csvContent = [
+                  ['链接文本', '链接地址', '域名'],
+                  ...clipLinks.map(link => {
+                    try {
+                      const domain = new URL(link.href).hostname;
+                      return [link.text || link.href, link.href, domain];
+                    } catch {
+                      return [link.text || link.href, link.href, ''];
+                    }
+                  })
+                ].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+                
+                // 添加BOM以支持Excel正确识别UTF-8
+                const BOM = '\uFEFF';
+                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `链接列表_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                // 显示成功提示
+                const toast = document.createElement('div');
+                toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.8); color: white; padding: 12px 20px; border-radius: 8px; z-index: 2147483650; font-size: 14px;';
+                toast.textContent = `✅ 已导出 ${clipLinks.length} 个链接到Excel`;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+              }}
+              title="导出链接为Excel"
+            >
+              <FileSpreadsheet size={14} />
+              导出Excel
+            </button>
+          </div>
+          <div className="links-container">
+            {(linksExpanded ? clipLinks : clipLinks.slice(0, 5)).map((link, idx) => {
+              try {
+                const domain = new URL(link.href).hostname;
+                return (
+                  <div key={idx} className="link-item">
+                    <a 
+                      href={link.href} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="link-content"
+                    >
+                      <div className="link-text">{link.text || link.href}</div>
+                      <div className="link-domain">{domain}</div>
+                    </a>
+                  </div>
+                );
+              } catch {
+                return (
+                  <div key={idx} className="link-item">
+                    <a 
+                      href={link.href} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="link-content"
+                    >
+                      <div className="link-text">{link.text || link.href}</div>
+                    </a>
+                  </div>
+                );
+              }
+            })}
+            {clipLinks.length > 5 && (
+              <button 
+                className="expand-toggle"
+                onClick={() => setLinksExpanded(!linksExpanded)}
+              >
+                {linksExpanded ? (
+                  <>
+                    <ChevronUp size={14} />
+                    收起
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    展开更多 ({clipLinks.length - 5}个)
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 新增：图片展示框 */}
+      {clipImages.length > 0 && (
+        <>
+          <div className="section-title">
+            <span>📷 图片 ({clipImages.length}张)</span>
+            <button 
+              className="download-all-btn"
+              onClick={async () => {
+                for (let i = 0; i < clipImages.length; i++) {
+                  const img = clipImages[i];
+                  try {
+                    if (chrome.downloads) {
+                      const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                      const filename = img.alt 
+                        ? `${img.alt.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`
+                        : `image-${i + 1}.${extension}`;
+                      await chrome.downloads.download({
+                        url: img.src,
+                        filename: filename,
+                        saveAs: false
+                      });
+                    } else {
+                      const response = await fetch(img.src);
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = img.alt || `image-${i + 1}.jpg`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                  } catch (error) {
+                    console.error(`下载图片失败: ${img.src}`, error);
+                  }
+                }
+              }}
+              title="一键下载所有图片"
+            >
+              <Download size={14} />
+              下载全部
+            </button>
+          </div>
+          <div className="images-container">
+            {(imagesExpanded ? clipImages : clipImages.slice(0, 4)).map((img, idx) => (
+              <div key={idx} className="image-item">
+                <div className="image-wrapper">
+                  <img 
+                    src={img.src} 
+                    alt={img.alt || `图片 ${idx + 1}`}
+                    className="clip-image"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                    onClick={async () => {
+                      try {
+                        if (chrome.downloads) {
+                          const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                          const filename = img.alt 
+                            ? `${img.alt.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`
+                            : `image-${idx + 1}.${extension}`;
+                          await chrome.downloads.download({
+                            url: img.src,
+                            filename: filename,
+                            saveAs: false
+                          });
+                        } else {
+                          const response = await fetch(img.src);
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          const extension = img.src.split('.').pop()?.split('?')[0] || 'jpg';
+                          a.download = img.alt || `image-${idx + 1}.${extension}`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                        }
+                      } catch (error) {
+                        console.error(`下载图片失败: ${img.src}`, error);
+                        alert('下载失败，请检查图片链接是否有效');
+                      }
+                    }}
+                  />
+                  <div className="image-download-overlay" title="点击下载">
+                    <Download size={16} />
+                  </div>
+                </div>
+                {img.alt && (
+                  <div className="image-caption">{img.alt}</div>
+                )}
+              </div>
+            ))}
+            {clipImages.length > 4 && (
+              <button 
+                className="expand-toggle image-expand-toggle"
+                onClick={() => setImagesExpanded(!imagesExpanded)}
+              >
+                {imagesExpanded ? (
+                  <>
+                    <ChevronUp size={14} />
+                    收起
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    展开更多 ({clipImages.length - 4}张)
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="section-title">{t('selectTemplate')}</div>
       <div className="template-grid">
@@ -1207,7 +1646,7 @@ function SidePanel() {
 
   return (
     // ✨ 控制显示/隐藏
-   <div className="sidepanel-container" style={{ display: isVisible ? 'flex' : 'none' }}>
+   <div className={`sidepanel-container ${isVisible ? '' : 'hidden'}`}>
       <div className="header">
         <div className="header-left">
           <button className="icon-btn" onClick={() => setShowHistory(true)} title={t('history')}><Menu size={22}/></button>
