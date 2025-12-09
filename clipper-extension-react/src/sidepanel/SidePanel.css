@@ -270,9 +270,24 @@ body {
   font-weight: 600;
 }
 
-.history-title-text {
-  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 10px;
+.history-title-container {
+  flex: 1; 
+  display: flex;
+  align-items: center;
+  white-space: nowrap; 
+  overflow: hidden; 
+  margin-right: 10px;
 }
+
+.history-title-text {
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+
+
 .history-actions { display: none; align-items: center; gap: 4px; }
 .history-item:hover .history-actions { display: flex; }
 
