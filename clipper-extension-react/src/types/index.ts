@@ -12,7 +12,18 @@ export type MessageType =
  | 'GET_LAST_CLIP'
  | 'CROP_IMAGE'          // 裁剪图片
  | 'GET_VISION_RESULT'   // 获取识图结果
+ | 'CLEAR_ALL_HIGHLIGHTS' // 清除所有高亮
  | string;
+
+// 高亮信息结构
+export interface HighlightInfo {
+  id: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  startContainer: string;
+  endContainer: string;
+}
 
 // CLIP_CONTENT 的负载结构（允许 text/html 可选，同时扩展来源 URL 等）
 export interface ClipContentPayload {
@@ -23,6 +34,7 @@ export interface ClipContentPayload {
   meta?: PageMeta;
   sourceUrl?: string;
   structuredData?: StructuredDataType | Record<string, unknown>;
+  highlights?: Array<HighlightInfo>; // 新增：高亮信息，用于后端存储时保持高亮
 }
 
 

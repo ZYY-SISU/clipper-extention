@@ -4,6 +4,8 @@ import type{ senderType, sendResponseType, templateType, requestType, Structured
 // 全局状态存储
 const globalState = {
   latestClip: null as ClipContentPayload | null,
+  content: '',
+  fullPayload: null as ClipContentPayload | null, // 完整剪藏数据（包含图片、链接、高亮等）
   structuredData: null as StructuredDataType | null,
   templates: [] as templateType[],
   isLoadingTemplates: true
@@ -109,6 +111,9 @@ function handleMessage(request: requestType, sender: senderType, sendResponse: s
     // 【接收剪藏内容】
     case 'CLIP_CONTENT':
       globalState.latestClip = request.payload || null;
+      globalState.content = request.payload?.text || request.payload?.html || '';
+      // 保存完整payload（包含图片、链接、高亮信息）
+      globalState.fullPayload = request.payload || null;
       sendResponse({ status: 'success', message: '内容已接收' });
       chrome.runtime.sendMessage({ type: 'CLIP_CONTENT_UPDATED', payload: request.payload }).catch(() => {});
       return true;
