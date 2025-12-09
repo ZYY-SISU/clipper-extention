@@ -11,7 +11,10 @@ const FIELDS_SUMMARY = [
   { field_name: "情感", type: 1 },
   { field_name: "标签", type: 1 },
   { field_name: "个人感想", type: 1 },
-  { field_name: "原文链接", type: 15 }
+  { field_name: "原文链接", type: 15 },
+  { field_name: "图片", type: 1 },       // 🟢 新增：图片列表
+  { field_name: "链接", type: 1 },       // 🟢 新增：链接列表
+  { field_name: "高亮内容", type: 1 }    // 🟢 新增：高亮文本
 ];
 
 // 视频表：基础信息 + 视频独有数据
@@ -25,7 +28,10 @@ const FIELDS_VIDEO = [
   { field_name: "收藏", type: 1 },      // 🟢 独有
   { field_name: "标签", type: 1 },
   { field_name: "个人感想", type: 1 },
-  { field_name: "原文链接", type: 15 }
+  { field_name: "原文链接", type: 15 },
+  { field_name: "图片", type: 1 },       // 🟢 新增：图片列表
+  { field_name: "链接", type: 1 },       // 🟢 新增：链接列表
+  { field_name: "高亮内容", type: 1 }    // 🟢 新增：高亮文本
 ];
 
 // 音乐表 (新增)
@@ -235,6 +241,25 @@ async function addSingleRecord(data: any, options: SaveOptions) {
   if (data.like_count) candidateFields["点赞"] = data.like_count;
   if (data.coin_count) candidateFields["投币"] = data.coin_count;
   if (data.collect_count) candidateFields["收藏"] = data.collect_count;
+
+  // 🟢 新增字段：图片、链接、高亮内容
+  if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+    console.log(`📸 检测到 ${data.images.length} 张图片`);
+    // 格式化为 URL 列表 (每行一个)
+    candidateFields["图片"] = data.images.map((img: any) => img.src).join('\n');
+  }
+  
+  if (data.links && Array.isArray(data.links) && data.links.length > 0) {
+    console.log(`🔗 检测到 ${data.links.length} 个链接`);
+    // 格式化为 "文本 | URL" 格式 (每行一个)
+    candidateFields["链接"] = data.links.map((link: any) => `${link.text} | ${link.href}`).join('\n');
+  }
+  
+  if (data.highlights && Array.isArray(data.highlights) && data.highlights.length > 0) {
+    console.log(`✨ 检测到 ${data.highlights.length} 处高亮`);
+    // 使用 ||| 分隔符连接所有高亮文本
+    candidateFields["高亮内容"] = data.highlights.map((h: any) => h.text).join('|||');
+  }
 
   // 3. 过滤字段
   const fields = Object.fromEntries(

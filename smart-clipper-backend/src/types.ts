@@ -32,6 +32,25 @@ export interface FeishuData {
   tags: string[];
   sentiment: string;
   url: string;
+  // 🆕 新增字段
+  images?: Array<{
+    src: string;
+    alt: string;
+    width?: number;
+    height?: number;
+  }>;
+  links?: Array<{
+    href: string;
+    text: string;
+  }>;
+  highlights?: Array<{
+    id: string;
+    text: string;
+    startOffset: number;
+    endOffset: number;
+    startContainer: string;
+    endContainer: string;
+  }>;
   [key: string]: any; // 允许其他动态字段
 }
 
