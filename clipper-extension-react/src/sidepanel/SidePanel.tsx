@@ -3,8 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import {
   FileText, Table, CheckSquare, Sparkles, Bot,
-  Star, Send, MessageSquare, ChevronDown, Check, Zap,
-  Brain ,Globe, PlusCircle, History, Menu, X,
+  Send, MessageSquare, ChevronDown, Check, Zap,
+  Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
   Download, ChevronUp, FileSpreadsheet
@@ -46,7 +46,7 @@ function SidePanel() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  // const [isInitializing, setIsInitializing] = useState(false); // 初始化 Loading（未使用） // 🟢 [新增] 存储用户填写的飞书多维表格链接
+  const [_isInitializing, setIsInitializing] = useState(false); // 🟢 [新增] 存储用户填写的飞书多维表格链接
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -637,7 +637,7 @@ function SidePanel() {
     });
   };
 //   传入完整的 userInfo 对象，而不仅仅是 token
-  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id: string }) => {
+  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id?: string }) => {
     setIsInitializing(true);
     try {
       const storage = await chrome.storage.sync.get(['clipper_conf']);//检查本地存储
@@ -669,7 +669,7 @@ function SidePanel() {
       if (json.code === 200) {
         //  3. 组装带有身份信息的配置
         const newConfig: UserConfig = {
-          userId: user.open_id, // 绑定 ID
+          userId: user.open_id || '', // 绑定 ID
           name: user.name,      // 绑定名字
           // avatar: user.avatar,  // 绑定头像
           appToken: json.data.appToken,
@@ -811,7 +811,7 @@ function SidePanel() {
       const templateIdToUse = message.templateId;
 
       // 根据 ID 去配置里查表
-      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+      const tableId = userConfig?.tables[templateIdToUse] || userConfig?.tables['default'];
 
       console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
@@ -830,7 +830,7 @@ function SidePanel() {
       const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig?.appToken, tableId  })
       });
       const result = await response.json();
       
@@ -851,6 +851,7 @@ function SidePanel() {
 
   // --- 视图 2: 对话列表（已废弃，使用 renderHistoryDrawer） ---
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
   const _renderConversationsView = () => (
     <div className="conversations-container">
       <div className="conversations-header">
@@ -888,6 +889,7 @@ function SidePanel() {
 
   // ---新增 视图 3: 设置界面（已废弃，使用 renderSettingsModal） ---
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
   const _renderSettings = () => (
     <div className="container">
       <div className="section-title">设置目标表格</div>
@@ -1485,7 +1487,7 @@ function SidePanel() {
             {showToolPicker && (
               <div className="mcp-tool-panel">
                 {isLoadingTools ? (
-                  <div className="mcp-tool-panel-empty">加载中...</div>
+                  <div className="mcp-tool-panel-empty">正在加载工具...</div>
                 ) : availableTools.length === 0 ? (
                   <div className="mcp-tool-panel-empty">暂无可用工具</div>
                 ) : (

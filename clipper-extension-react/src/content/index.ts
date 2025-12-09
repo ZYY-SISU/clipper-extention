@@ -265,7 +265,8 @@ function detectUserIntent(): UserIntentDetection {
 /**
  * 检测当前网站类型并返回相关操作建议
  */
-function detectSiteContext(): { type: string; suggestions: Array<{label: string; action: string; icon: string}> } {
+// @ts-expect-error - 这个函数保留供未来功能使用
+function _detectSiteContext(): { type: string; suggestions: Array<{label: string; action: string; icon: string}> } {
   const hostname = window.location.hostname;
   
   // GitHub
@@ -525,7 +526,7 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
 /**
  * 执行智能操作（自动执行）
  */
-function executeSmartAction(action: string, contentType: ContentTypeDetection | null, pageType: PageTypeDetection | null, userIntent: UserIntentDetection | null): void {
+function executeSmartAction(action: string, contentType: ContentTypeDetection | null, _pageType: PageTypeDetection | null, _userIntent: UserIntentDetection | null): void {
   // 实现自动执行逻辑
   if (action.startsWith('use-template-')) {
     const templateId = action.replace('use-template-', '');
@@ -568,7 +569,7 @@ function handleSmartAction(action: string, contentType: ContentTypeDetection | n
 /**
  * 处理用户意图
  */
-function handleUserIntent(intent: string, userIntent: UserIntentDetection | null): void {
+function handleUserIntent(intent: string, _userIntent: UserIntentDetection | null): void {
   switch (intent) {
     case 'merge':
       // 显示合并选项
@@ -2405,7 +2406,8 @@ function clearAllHighlights() {
 }
 
 // 清除指定高亮
-function clearHighlight(highlightId: string) {
+// @ts-expect-error - 这个函数保留供未来功能使用
+function _clearHighlight(highlightId: string) {
   const index = highlightedRanges.findIndex(hr => hr.id === highlightId);
   if (index !== -1) {
     highlightedRanges[index].overlay.remove();
