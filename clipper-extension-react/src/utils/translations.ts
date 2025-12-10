@@ -18,6 +18,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     previewTitle: "原始内容预览",
     previewPlaceholder: "请在网页上划选文字，内容将显示在这里...",
     selectTemplate: "选择模版",
+    recommended: "推荐",
     startAnalyze: "开始分析",
     // 模版名称
     template_summary: "智能摘要",
@@ -91,6 +92,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     previewTitle: "Content Preview",
     previewPlaceholder: "Select text on the page to display here...",
     selectTemplate: "Select Template",
+    recommended: "Recommended",
     startAnalyze: "Analyze",
     // Templates
     template_summary: "Summary",

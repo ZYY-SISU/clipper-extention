@@ -3,8 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import {
   FileText, Table, CheckSquare, Sparkles, Bot,
-  Star, Send, MessageSquare, ChevronDown, Check, Zap,
-  Brain ,Globe, PlusCircle, History, Menu, X,
+  Send, MessageSquare, ChevronDown, Check, Zap,
+  Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
   Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
   Download, ChevronUp, FileSpreadsheet
@@ -21,6 +21,62 @@ const AI_MODELS = [
   { id: 'gpt-4o-mini', name: 'GPT-4o mini', icon: Zap, color: '#f59e0b', tag: 'fast' },
   { id: 'claude-3-5', name: 'Claude 3.5', icon: Bot, color: '#7c3aed', tag: 'smart' },
 ];
+
+//  模板自动推荐相关配置
+const VIDEO_DOMAINS = ['bilibili.com', 'youtube.com', 'youku.com', 'iqiyi.com', 'v.qq.com'];
+const VIDEO_TEXT_HINTS = ['播放量', '弹幕', 'up主', '订阅', '频道', 'video', 'b站'];
+const MUSIC_DOMAINS = ['y.qq.com', 'music.163.com', 'kugou.com', 'kuwo.cn', 'spotify.com', 'music.apple.com'];
+const MUSIC_TEXT_HINTS = ['歌单', '曲目', '播放列表', 'tracklist', 'album', 'music'];
+const TECH_DOMAINS = ['developer.', 'docs.', 'dev.', 'api.', 'learn.microsoft.com', 'developer.mozilla.org', 'cloud.tencent.com'];
+const TECH_TEXT_HINTS = ['api', '请求参数', 'response', '返回值', '示例代码', '技术文档', 'endpoint', 'sdk'];
+
+const containsKeyword = (input: string, keywords: string[]) => {
+  if (!input) return false;
+  const normalized = input.toLowerCase();
+  return keywords.some(keyword => keyword && normalized.includes(keyword.toLowerCase()));
+};
+
+const detectTemplateRecommendation = (payload: ClipContentPayload | null, templates: templateType[]): string | null => {
+  if (!payload || templates.length === 0) return null;
+  const availableIds = new Set(templates.map(t => t.id));
+  const pickIfAvailable = (id: string) => (availableIds.has(id) ? id : null);
+
+  const urlContext = `${payload.sourceUrl || ''} ${payload.meta?.url || ''} ${payload.meta?.siteName || ''}`.toLowerCase();
+  const textContext = `${payload.text || ''} ${payload.html || ''}`.toLowerCase();
+
+  // 视频检测
+  if (
+    containsKeyword(urlContext, VIDEO_DOMAINS) ||
+    containsKeyword(textContext, VIDEO_TEXT_HINTS) ||
+    textContext.includes('【视频智能剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('video-summary');
+    if (target) return target;
+  }
+
+  // 音乐检测
+  if (
+    containsKeyword(urlContext, MUSIC_DOMAINS) ||
+    containsKeyword(textContext, MUSIC_TEXT_HINTS) ||
+    textContext.includes('【音乐合集剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('music-collection');
+    if (target) return target;
+  }
+
+  // 技术文档检测
+  if (
+    containsKeyword(urlContext, TECH_DOMAINS) ||
+    containsKeyword(textContext, TECH_TEXT_HINTS) ||
+    textContext.includes('【技术文档剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('tech-doc');
+    if (target) return target;
+  }
+
+  return pickIfAvailable('summary');
+};
+
 
 
 function SidePanel() {
@@ -46,7 +102,7 @@ function SidePanel() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  // const [isInitializing, setIsInitializing] = useState(false); // 初始化 Loading（未使用） // 🟢 [新增] 存储用户填写的飞书多维表格链接
+  const [, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -64,6 +120,9 @@ function SidePanel() {
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
+  const [isTemplateLockedByUser, setIsTemplateLockedByUser] = useState(false);
+  const [clipPayload, setClipPayload] = useState<ClipContentPayload | null>(null); // 🟢 保存完整的剪藏内容
   const [status, setStatus] = useState('ready');
 
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); 
@@ -80,6 +139,7 @@ function SidePanel() {
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [currentConversationUrl, setCurrentConversationUrl] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -89,7 +149,7 @@ function SidePanel() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
 
-  // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
+  //  1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 's' || event.key === 'S')) {
@@ -175,6 +235,22 @@ function SidePanel() {
     stateRef.current = { currentUrl, currentConversationId, chatHistory };
   }, [currentUrl, currentConversationId, chatHistory]);
 
+  //  自动推荐模板
+  useEffect(() => {
+    if (!clipPayload || templates.length === 0) {
+      setRecommendedTemplateId(null);
+      return;
+    }
+
+    const nextRecommendation = detectTemplateRecommendation(clipPayload, templates);
+    setRecommendedTemplateId(nextRecommendation);
+
+    // 如果用户没有手动选择模板，则自动应用推荐
+    if (!isTemplateLockedByUser && nextRecommendation && nextRecommendation !== selectedTemplateId) {
+      setSelectedTemplateId(nextRecommendation);
+    }
+  }, [clipPayload, templates, isTemplateLockedByUser, selectedTemplateId]);
+
   // --- 主题生效 ---
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
@@ -215,6 +291,10 @@ function SidePanel() {
               setStructuredData(null);
               setView('clipper');
             }
+            // 保存完整的 payload 以便自动推荐使用
+            setClipPayload(payload);
+            // 重置用户选择锁定状态,允许新内容触发自动推荐
+            setIsTemplateLockedByUser(false);
             // 修复：同时更新图片和链接信息
             if (payload.images) {
               setClipImages(payload.images);
@@ -267,6 +347,8 @@ function SidePanel() {
           setStructuredData(null);
           setView('clipper');
         }
+        // 保存完整的 payload
+        setClipPayload(payload);
         // 修复：同时加载图片和链接信息
         if (payload.images) {
           setClipImages(payload.images);
@@ -328,11 +410,16 @@ function SidePanel() {
   }, []);
 
   useEffect(() => {
-    if (currentUrl && currentConversationId) {
-      ChatStorage.updateConversationMessages(currentUrl, currentConversationId, chatHistory);
-      if (!editingConvId) setConversations(ChatStorage.getConversationList(currentUrl));
+    if (currentConversationId && chatHistory.length > 0) {
+      // 使用当前对话所属的URL来保存聊天记录，如果没有则使用当前网页的URL
+      const saveUrl = currentConversationUrl || currentUrl;
+      if (saveUrl) {
+        ChatStorage.updateConversationMessages(saveUrl, currentConversationId, chatHistory);
+        // 更新当前网页的对话列表
+        setConversations(ChatStorage.getConversationList(currentUrl));
+      }
     }
-  }, [chatHistory, currentUrl, currentConversationId]);
+  }, [chatHistory, currentUrl, currentConversationId, currentConversationUrl]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -411,10 +498,18 @@ function SidePanel() {
   // --- 动作逻辑 ---
   const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); 
-    if (confirm(t('confirmDelete'))) {
-      ChatStorage.deleteConversation(currentUrl, id);
+    if (confirm(t('confirmDelete'))) { 
+      // 查找对话所属的URL
+      const conversationUrl = ChatStorage.findConversationUrl(id);
+      if (conversationUrl) {
+        ChatStorage.deleteConversation(conversationUrl, id);
+      }
+      
+      // 更新当前页面的对话列表
       const updatedList = ChatStorage.getConversationList(currentUrl);
       setConversations(updatedList);
+
+      // 如果删除的是当前对话，需要切换到其他对话或创建新对话
       if (currentConversationId === id) {
         if (updatedList.length > 0) {
           setCurrentConversationId(updatedList[0].id);
@@ -433,12 +528,21 @@ function SidePanel() {
   const handleSubmitRename = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!editingConvId || !editingTitle.trim()) return;
-    const conv = conversations.find(c => c.id === editingConvId);
-    if (conv) {
-      const updated = { ...conv, title: editingTitle.trim() };
-      ChatStorage.updateConversation(currentUrl, updated);
-      setConversations(ChatStorage.getConversationList(currentUrl));
+
+    // 查找对话所属的URL
+    const conversationUrl = ChatStorage.findConversationUrl(editingConvId);
+    if (conversationUrl) {
+      // 获取当前对话信息
+      const conv = ChatStorage.getConversation(conversationUrl, editingConvId);
+      if (conv) {
+        const updated = { ...conv, title: editingTitle.trim() };
+        ChatStorage.updateConversation(conversationUrl, updated);
+        
+        // 更新当前页面的对话列表
+        setConversations(ChatStorage.getConversationList(currentUrl));
+      }
     }
+    
     setEditingConvId(null);
   };
 
@@ -637,7 +741,7 @@ function SidePanel() {
     });
   };
 //   传入完整的 userInfo 对象，而不仅仅是 token
-  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id: string }) => {
+  const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id?: string }) => {
     setIsInitializing(true);
     try {
       const storage = await chrome.storage.sync.get(['clipper_conf']);//检查本地存储
@@ -669,7 +773,7 @@ function SidePanel() {
       if (json.code === 200) {
         //  3. 组装带有身份信息的配置
         const newConfig: UserConfig = {
-          userId: user.open_id, // 绑定 ID
+          userId: user.open_id || '', // 绑定 ID
           name: user.name,      // 绑定名字
           // avatar: user.avatar,  // 绑定头像
           appToken: json.data.appToken,
@@ -737,7 +841,7 @@ function SidePanel() {
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
       // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
-      let finalStructuredData = { ...structuredData };
+      const finalStructuredData = { ...structuredData };
       
       // 检查原始内容中是否有高亮格式
       if (content && content.includes('==')) {
@@ -811,7 +915,7 @@ function SidePanel() {
       const templateIdToUse = message.templateId;
 
       // 根据 ID 去配置里查表
-      const tableId = userConfig.tables[templateIdToUse] || userConfig.tables['default'];
+      const tableId = userConfig?.tables[templateIdToUse] || userConfig?.tables['default'];
 
       console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
@@ -830,7 +934,7 @@ function SidePanel() {
       const response = await fetch('http://localhost:3000/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig.appToken, tableId  })
+        body: JSON.stringify({ ...exportData, userAccessToken: userInfo.token, appToken: userConfig?.appToken, tableId  })
       });
       const result = await response.json();
       
@@ -851,6 +955,7 @@ function SidePanel() {
 
   // --- 视图 2: 对话列表（已废弃，使用 renderHistoryDrawer） ---
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
   const _renderConversationsView = () => (
     <div className="conversations-container">
       <div className="conversations-header">
@@ -888,6 +993,7 @@ function SidePanel() {
 
   // ---新增 视图 3: 设置界面（已废弃，使用 renderSettingsModal） ---
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - 这个函数保留供未来功能使用
   const _renderSettings = () => (
     <div className="container">
       <div className="section-title">设置目标表格</div>
@@ -963,6 +1069,8 @@ function SidePanel() {
     const newConvo = ChatStorage.createConversation(currentUrl);
     setConversations(ChatStorage.getConversationList(currentUrl));
     setCurrentConversationId(newConvo.id);
+    // 新对话属于当前网页的URL
+    setCurrentConversationUrl(currentUrl);
     setChatHistory([]);
     setView('chat');
     setShowHistory(false);
@@ -970,8 +1078,14 @@ function SidePanel() {
 
   const handleSwitchConversation = (id: string) => {
     setCurrentConversationId(id);
-    const c = ChatStorage.getConversation(currentUrl, id);
-    if (c) setChatHistory(c.messages);
+    const allConversations = ChatStorage.getAllConversations();
+    const c = allConversations.find(conv => conv.id === id);
+    if (c) {
+      setChatHistory(c.messages);
+      // 查找对话所属的URL并保存
+      const conversationUrl = ChatStorage.findConversationUrl(id);
+      setCurrentConversationUrl(conversationUrl);
+    }
     setView('chat');
     setShowHistory(false);
   };
@@ -1002,7 +1116,7 @@ function SidePanel() {
         </button>
 
         <div className="history-list">
-          {conversations.map(c => (
+          {ChatStorage.getAllConversations().map(c => (
             <div key={c.id} className={`history-item ${currentConversationId === c.id ? 'active' : ''}`} onClick={() => handleSwitchConversation(c.id)}>
               {editingConvId === c.id ? (
                 <div style={{display:'flex', alignItems:'center', flex:1, width:'100%'}} onClick={e=>e.stopPropagation()}>
@@ -1011,8 +1125,22 @@ function SidePanel() {
                 </div>
               ) : (
                 <>
-                  <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
+                  <div className="history-title-container">
+                    <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
+                  </div>
                   <div className="history-actions">
+                     <button 
+                       className="action-icon-btn" 
+                       onClick={(e)=>{
+                         e.stopPropagation(); // 阻止事件冒泡，避免触发handleSwitchConversation
+                         // 确保URL是完整的，否则添加默认协议
+                         const fullUrl = c.url.startsWith('http://') || c.url.startsWith('https://') ? c.url : `https://${c.url}`;
+                         window.open(fullUrl, '_blank'); // 打开新窗口跳转到对应网站
+                       }}
+                       title={t('openWebsite') || 'Open Website'}
+                     >
+                       <Globe size={14}/>
+                    </button>
                      <button className="action-icon-btn" onClick={(e)=>handleStartRename(e, c.id, c.title)} title={t('rename')}><Edit2 size={14}/></button>
                      <button className="action-icon-btn delete" onClick={(e)=>handleDeleteConversation(e, c.id)} title={t('delete')}><Trash2 size={14}/></button>
                   </div>
@@ -1334,15 +1462,20 @@ function SidePanel() {
              const Icon = getIconComponent(tpl.iconType);
              // 为音乐合辑模板添加悬停提示
              const tooltip = tpl.id === 'music-collection' ? '支持qq音乐、网易云音乐' : '';
+             const isRecommended = tpl.id === recommendedTemplateId;
              return (
                <div 
                  key={tpl.id} 
                  className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} 
-                 onClick={() => setSelectedTemplateId(tpl.id)}
+                 onClick={() => {
+                   setSelectedTemplateId(tpl.id);
+                   setIsTemplateLockedByUser(true);
+                 }}
                  title={tooltip}
                >
                  <Icon size={20} /> 
                  <span>{getTemplateName(tpl)}</span>
+                 {isRecommended && <span className="template-badge">推荐</span>}
                </div>
              );
            })
@@ -1485,7 +1618,7 @@ function SidePanel() {
             {showToolPicker && (
               <div className="mcp-tool-panel">
                 {isLoadingTools ? (
-                  <div className="mcp-tool-panel-empty">加载中...</div>
+                  <div className="mcp-tool-panel-empty">正在加载工具...</div>
                 ) : availableTools.length === 0 ? (
                   <div className="mcp-tool-panel-empty">暂无可用工具</div>
                 ) : (

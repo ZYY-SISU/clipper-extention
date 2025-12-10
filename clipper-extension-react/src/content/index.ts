@@ -265,7 +265,8 @@ function detectUserIntent(): UserIntentDetection {
 /**
  * 检测当前网站类型并返回相关操作建议
  */
-function detectSiteContext(): { type: string; suggestions: Array<{label: string; action: string; icon: string}> } {
+// @ts-expect-error - 这个函数保留供未来功能使用
+function _detectSiteContext(): { type: string; suggestions: Array<{label: string; action: string; icon: string}> } {
   const hostname = window.location.hostname;
   
   // GitHub
@@ -525,7 +526,7 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
 /**
  * 执行智能操作（自动执行）
  */
-function executeSmartAction(action: string, contentType: ContentTypeDetection | null, pageType: PageTypeDetection | null, userIntent: UserIntentDetection | null): void {
+function executeSmartAction(action: string, contentType: ContentTypeDetection | null, _pageType: PageTypeDetection | null, _userIntent: UserIntentDetection | null): void {
   // 实现自动执行逻辑
   if (action.startsWith('use-template-')) {
     const templateId = action.replace('use-template-', '');
@@ -568,7 +569,7 @@ function handleSmartAction(action: string, contentType: ContentTypeDetection | n
 /**
  * 处理用户意图
  */
-function handleUserIntent(intent: string, userIntent: UserIntentDetection | null): void {
+function handleUserIntent(intent: string, _userIntent: UserIntentDetection | null): void {
   switch (intent) {
     case 'merge':
       // 显示合并选项
@@ -1702,7 +1703,7 @@ function createToolbar(): HTMLElement {
   return toolbarElement;
 }
 
-// ============= 【工具栏显示逻辑 (保持原样)】================
+// ============= 【工具栏显示逻辑】================
 function showToolbar(rect: DOMRect): void {
   if (!toolbar) return;
 
@@ -1722,11 +1723,22 @@ function showToolbar(rect: DOMRect): void {
   const scrollX = window.scrollX;
   const scrollY = window.scrollY;
   
-  const rectTop = rect.top + scrollY;
-  const rectBottom = rect.bottom + scrollY;
-  const rectLeft = rect.left + scrollX;
-  // const rectRight = rect.right + scrollX;
-  const rectCenterX = rectLeft + rect.width / 2;
+  // 检查rect是否有效，如果无效则使用默认位置
+  let rectTop = rect.top + scrollY;
+  let rectBottom = rect.bottom + scrollY;
+  let rectLeft = rect.left + scrollX;
+  let rectCenterX = rectLeft + rect.width / 2;
+  
+  // 如果rect无效，使用视口中心作为默认位置
+  if (!rect.width || !rect.height || rect.top === 0 && rect.left === 0 && rect.bottom === 0 && rect.right === 0) {
+    const viewportCenterX = scrollX + viewportWidth / 2;
+    const viewportCenterY = scrollY + viewportHeight / 2;
+    
+    rectTop = viewportCenterY - 50;
+    rectBottom = viewportCenterY + 50;
+    rectLeft = viewportCenterX - 100;
+    rectCenterX = viewportCenterX;
+  }
   
   // 优先位置：选区上方居中
   const preferredTop = rectTop - toolbarHeight - gap;
@@ -1752,6 +1764,10 @@ function showToolbar(rect: DOMRect): void {
   if (finalLeft < scrollX + padding) finalLeft = scrollX + padding;
   if (finalLeft + toolbarWidth > scrollX + viewportWidth - padding) finalLeft = scrollX + viewportWidth - toolbarWidth - padding;
   if (toolbarWidth > viewportWidth - padding * 2) finalLeft = scrollX + padding;
+  
+  // 确保最终位置始终在视口内
+  finalTop = Math.max(scrollY + padding, Math.min(finalTop, scrollY + viewportHeight - toolbarHeight - padding));
+  finalLeft = Math.max(scrollX + padding, Math.min(finalLeft, scrollX + viewportWidth - toolbarWidth - padding));
   
   toolbar.style.top = `${finalTop - scrollY}px`;
   toolbar.style.left = `${finalLeft - scrollX}px`;
@@ -2405,7 +2421,8 @@ function clearAllHighlights() {
 }
 
 // 清除指定高亮
-function clearHighlight(highlightId: string) {
+// @ts-expect-error - 这个函数保留供未来功能使用
+function _clearHighlight(highlightId: string) {
   const index = highlightedRanges.findIndex(hr => hr.id === highlightId);
   if (index !== -1) {
     highlightedRanges[index].overlay.remove();

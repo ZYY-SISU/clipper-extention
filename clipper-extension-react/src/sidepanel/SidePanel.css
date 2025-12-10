@@ -274,9 +274,24 @@ body {
   font-weight: 600;
 }
 
-.history-title-text {
-  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 10px;
+.history-title-container {
+  flex: 1; 
+  display: flex;
+  align-items: center;
+  white-space: nowrap; 
+  overflow: hidden; 
+  margin-right: 10px;
 }
+
+.history-title-text {
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+
+
 .history-actions { display: none; align-items: center; gap: 4px; }
 .history-item:hover .history-actions { display: flex; }
 
@@ -596,9 +611,7 @@ body {
   color: white;
 }
 
-
 /* 模板卡片网格 */
->>>>>>> Stashed changes
 .template-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 120px;
 }
@@ -611,6 +624,7 @@ body {
   cursor: pointer; transition: all 0.2s;
   color: var(--text-secondary);
   box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  position: relative;
 }
 .template-card:hover {
   background: var(--gemini-surface);
@@ -624,6 +638,19 @@ body {
   box-shadow: none;
 }
 .template-card.active svg { stroke-width: 2.5px; }
+
+.template-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--gemini-blue);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  pointer-events: none;
+}
 
 /* =============================================================================
    💬 聊天界面
@@ -931,7 +958,7 @@ body {
 
 .mcp-tool-panel {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
   width: 100%;
   background: var(--card-bg);
   border: 1px solid var(--border-color);

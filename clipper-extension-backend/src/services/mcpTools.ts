@@ -25,19 +25,19 @@ const USER_AGENT = 'SmartClipperBot/1.0 (+https://github.com/ZYY-SISU)';
 
 const fetchTool: McpTool = {
   id: 'fetch_web_summary',
-  name: 'fetch_web_summary',
+  name: '网页摘要抓取',
   description:
-    'Fetches a public web page and returns cleaned text snippets that are ready for summarization.',
+    '抓取公开网页内容并返回清理后的文本片段，可用于摘要分析。',
   parameters: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'Absolute URL to fetch. Only HTTP(S) endpoints are supported.',
+        description: '要抓取的网页绝对URL地址，仅支持HTTP(S)协议。',
       },
       maxLength: {
         type: 'number',
-        description: 'Optional upper bound for the text payload (default 2000 characters).',
+        description: '可选的文本内容长度上限（默认2000字符）。',
       },
     },
     required: ['url'],
@@ -121,6 +121,11 @@ export async function executeToolCall(
   call: ChatCompletionMessageToolCall,
   enabledTools: McpTool[],
 ): Promise<string> {
+  // 类型守卫：检查是否是标准工具调用
+  if (!('function' in call)) {
+    return JSON.stringify({ error: 'Unsupported tool call type.' });
+  }
+  
   const target = enabledTools.find((tool) => tool.name === call.function.name);
   if (!target) {
     return JSON.stringify({ error: `Tool ${call.function.name} is not enabled.` });
