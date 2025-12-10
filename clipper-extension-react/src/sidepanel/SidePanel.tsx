@@ -46,7 +46,7 @@ function SidePanel() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [_isInitializing, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
+  const [, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -760,7 +760,7 @@ function SidePanel() {
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
       // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
-      let finalStructuredData = { ...structuredData };
+      const finalStructuredData = { ...structuredData };
       
       // 检查原始内容中是否有高亮格式
       if (content && content.includes('==')) {

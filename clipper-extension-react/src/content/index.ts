@@ -1703,7 +1703,7 @@ function createToolbar(): HTMLElement {
   return toolbarElement;
 }
 
-// ============= 【工具栏显示逻辑 (保持原样)】================
+// ============= 【工具栏显示逻辑】================
 function showToolbar(rect: DOMRect): void {
   if (!toolbar) return;
 
@@ -1723,11 +1723,22 @@ function showToolbar(rect: DOMRect): void {
   const scrollX = window.scrollX;
   const scrollY = window.scrollY;
   
-  const rectTop = rect.top + scrollY;
-  const rectBottom = rect.bottom + scrollY;
-  const rectLeft = rect.left + scrollX;
-  // const rectRight = rect.right + scrollX;
-  const rectCenterX = rectLeft + rect.width / 2;
+  // 检查rect是否有效，如果无效则使用默认位置
+  let rectTop = rect.top + scrollY;
+  let rectBottom = rect.bottom + scrollY;
+  let rectLeft = rect.left + scrollX;
+  let rectCenterX = rectLeft + rect.width / 2;
+  
+  // 如果rect无效，使用视口中心作为默认位置
+  if (!rect.width || !rect.height || rect.top === 0 && rect.left === 0 && rect.bottom === 0 && rect.right === 0) {
+    const viewportCenterX = scrollX + viewportWidth / 2;
+    const viewportCenterY = scrollY + viewportHeight / 2;
+    
+    rectTop = viewportCenterY - 50;
+    rectBottom = viewportCenterY + 50;
+    rectLeft = viewportCenterX - 100;
+    rectCenterX = viewportCenterX;
+  }
   
   // 优先位置：选区上方居中
   const preferredTop = rectTop - toolbarHeight - gap;
@@ -1753,6 +1764,10 @@ function showToolbar(rect: DOMRect): void {
   if (finalLeft < scrollX + padding) finalLeft = scrollX + padding;
   if (finalLeft + toolbarWidth > scrollX + viewportWidth - padding) finalLeft = scrollX + viewportWidth - toolbarWidth - padding;
   if (toolbarWidth > viewportWidth - padding * 2) finalLeft = scrollX + padding;
+  
+  // 确保最终位置始终在视口内
+  finalTop = Math.max(scrollY + padding, Math.min(finalTop, scrollY + viewportHeight - toolbarHeight - padding));
+  finalLeft = Math.max(scrollX + padding, Math.min(finalLeft, scrollX + viewportWidth - toolbarWidth - padding));
   
   toolbar.style.top = `${finalTop - scrollY}px`;
   toolbar.style.left = `${finalLeft - scrollX}px`;
