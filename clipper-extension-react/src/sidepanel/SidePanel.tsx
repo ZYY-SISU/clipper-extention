@@ -102,7 +102,7 @@ function SidePanel() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [userInfo, setUserInfo] = useState<{name: string, avatar: string, token: string, open_id?: string} | null>(null);  // 🟢 [新增] 用于存储登录成功后的用户信息（名字、头像、Token）
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [_isInitializing, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
+  const [, setIsInitializing] = useState(false); // 🟢 [新增] 初始化 Loading
   const [showSettings, setShowSettings] = useState(false);
   
   // 🎨 主题 & 🌐 语言
@@ -139,6 +139,7 @@ function SidePanel() {
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [currentConversationUrl, setCurrentConversationUrl] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<McpToolDefinition[]>([]);
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -409,11 +410,16 @@ function SidePanel() {
   }, []);
 
   useEffect(() => {
-    if (currentUrl && currentConversationId) {
-      ChatStorage.updateConversationMessages(currentUrl, currentConversationId, chatHistory);
-      if (!editingConvId) setConversations(ChatStorage.getConversationList(currentUrl));
+    if (currentConversationId && chatHistory.length > 0) {
+      // 使用当前对话所属的URL来保存聊天记录，如果没有则使用当前网页的URL
+      const saveUrl = currentConversationUrl || currentUrl;
+      if (saveUrl) {
+        ChatStorage.updateConversationMessages(saveUrl, currentConversationId, chatHistory);
+        // 更新当前网页的对话列表
+        setConversations(ChatStorage.getConversationList(currentUrl));
+      }
     }
-  }, [chatHistory, currentUrl, currentConversationId]);
+  }, [chatHistory, currentUrl, currentConversationId, currentConversationUrl]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -492,10 +498,18 @@ function SidePanel() {
   // --- 动作逻辑 ---
   const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); 
-    if (confirm(t('confirmDelete'))) {
-      ChatStorage.deleteConversation(currentUrl, id);
+    if (confirm(t('confirmDelete'))) { 
+      // 查找对话所属的URL
+      const conversationUrl = ChatStorage.findConversationUrl(id);
+      if (conversationUrl) {
+        ChatStorage.deleteConversation(conversationUrl, id);
+      }
+      
+      // 更新当前页面的对话列表
       const updatedList = ChatStorage.getConversationList(currentUrl);
       setConversations(updatedList);
+
+      // 如果删除的是当前对话，需要切换到其他对话或创建新对话
       if (currentConversationId === id) {
         if (updatedList.length > 0) {
           setCurrentConversationId(updatedList[0].id);
@@ -514,12 +528,21 @@ function SidePanel() {
   const handleSubmitRename = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!editingConvId || !editingTitle.trim()) return;
-    const conv = conversations.find(c => c.id === editingConvId);
-    if (conv) {
-      const updated = { ...conv, title: editingTitle.trim() };
-      ChatStorage.updateConversation(currentUrl, updated);
-      setConversations(ChatStorage.getConversationList(currentUrl));
+
+    // 查找对话所属的URL
+    const conversationUrl = ChatStorage.findConversationUrl(editingConvId);
+    if (conversationUrl) {
+      // 获取当前对话信息
+      const conv = ChatStorage.getConversation(conversationUrl, editingConvId);
+      if (conv) {
+        const updated = { ...conv, title: editingTitle.trim() };
+        ChatStorage.updateConversation(conversationUrl, updated);
+        
+        // 更新当前页面的对话列表
+        setConversations(ChatStorage.getConversationList(currentUrl));
+      }
     }
+    
     setEditingConvId(null);
   };
 
@@ -818,7 +841,7 @@ function SidePanel() {
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
       // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
-      let finalStructuredData = { ...structuredData };
+      const finalStructuredData = { ...structuredData };
       
       // 检查原始内容中是否有高亮格式
       if (content && content.includes('==')) {
@@ -1046,6 +1069,8 @@ function SidePanel() {
     const newConvo = ChatStorage.createConversation(currentUrl);
     setConversations(ChatStorage.getConversationList(currentUrl));
     setCurrentConversationId(newConvo.id);
+    // 新对话属于当前网页的URL
+    setCurrentConversationUrl(currentUrl);
     setChatHistory([]);
     setView('chat');
     setShowHistory(false);
@@ -1053,8 +1078,14 @@ function SidePanel() {
 
   const handleSwitchConversation = (id: string) => {
     setCurrentConversationId(id);
-    const c = ChatStorage.getConversation(currentUrl, id);
-    if (c) setChatHistory(c.messages);
+    const allConversations = ChatStorage.getAllConversations();
+    const c = allConversations.find(conv => conv.id === id);
+    if (c) {
+      setChatHistory(c.messages);
+      // 查找对话所属的URL并保存
+      const conversationUrl = ChatStorage.findConversationUrl(id);
+      setCurrentConversationUrl(conversationUrl);
+    }
     setView('chat');
     setShowHistory(false);
   };
@@ -1085,7 +1116,7 @@ function SidePanel() {
         </button>
 
         <div className="history-list">
-          {conversations.map(c => (
+          {ChatStorage.getAllConversations().map(c => (
             <div key={c.id} className={`history-item ${currentConversationId === c.id ? 'active' : ''}`} onClick={() => handleSwitchConversation(c.id)}>
               {editingConvId === c.id ? (
                 <div style={{display:'flex', alignItems:'center', flex:1, width:'100%'}} onClick={e=>e.stopPropagation()}>
@@ -1094,8 +1125,22 @@ function SidePanel() {
                 </div>
               ) : (
                 <>
-                  <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
+                  <div className="history-title-container">
+                    <span className="history-title-text" title={c.title}>{c.title || t('defaultChatTitle')}</span>
+                  </div>
                   <div className="history-actions">
+                     <button 
+                       className="action-icon-btn" 
+                       onClick={(e)=>{
+                         e.stopPropagation(); // 阻止事件冒泡，避免触发handleSwitchConversation
+                         // 确保URL是完整的，否则添加默认协议
+                         const fullUrl = c.url.startsWith('http://') || c.url.startsWith('https://') ? c.url : `https://${c.url}`;
+                         window.open(fullUrl, '_blank'); // 打开新窗口跳转到对应网站
+                       }}
+                       title={t('openWebsite') || 'Open Website'}
+                     >
+                       <Globe size={14}/>
+                    </button>
                      <button className="action-icon-btn" onClick={(e)=>handleStartRename(e, c.id, c.title)} title={t('rename')}><Edit2 size={14}/></button>
                      <button className="action-icon-btn delete" onClick={(e)=>handleDeleteConversation(e, c.id)} title={t('delete')}><Trash2 size={14}/></button>
                   </div>
