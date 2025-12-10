@@ -3,7 +3,7 @@
 import axios from 'axios';
 import { FeishuData, SaveOptions } from '../types';
 
-// 🟢 1. 定义两套不同的表结构 (Schema)
+// 表结构 (Schema)
 // 摘要表：基础信息
 const FIELDS_SUMMARY = [
   { field_name: "标题", type: 1 },
@@ -45,6 +45,9 @@ const FIELDS_MUSIC = [
   { field_name: "歌单链接", type: 15 },
   { field_name: "个人感想", type: 1 }
 ];
+
+//技术文档表 (新增)
+
 
 // 映射关系
 const TABLES_CONFIG = [
@@ -201,12 +204,23 @@ export const initUserBase = async (userAccessToken: string) => {
      await cleanDefaultFields(appToken, table3Id, userAccessToken);// 清洗默认字段
     await addFieldsToTable(userAccessToken, appToken, table3Id, FIELDS_MUSIC); // 加列
 
-
+    // 5. 初始化 Table 4 (技术文档) 
+    console.log(`🛠️ 正在创建表4 [技术文档]...`);
+    const createTable4Res = await axios.post(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables`,
+        { table: { name: "技术文档" } },
+        { headers: { Authorization: `Bearer ${userAccessToken}` } }
+    );
+    const table4Id = createTable4Res.data.data.table_id;
+     await cleanDefaultFields(appToken, table4Id, userAccessToken);
+    await addFieldsToTable(userAccessToken, appToken, table4Id, FIELDS_SUMMARY); // 加列
   
+
     console.log("✅ 初始化完成！");
     console.log("摘要表格ID:", table1Id);
     console.log("视频表格ID:", table2Id);
     console.log("音乐表格ID:", table3Id);
+    console.log("技术文档表格ID:", table4Id);
     
 
     // 返回映射表：告诉前端哪个模版用哪个ID
@@ -216,7 +230,7 @@ export const initUserBase = async (userAccessToken: string) => {
         "summary": table1Id,  // 摘要模版 -> 表1
         "video-summary": table2Id, // 视频模版 -> 表2
         "music-collection": table3Id, // 音乐模版 -> 表3
-       
+        "tech-docs": table4Id, // 技术文档模版 -> 表4
         "default": table1Id   // 兜底
       }
     };
