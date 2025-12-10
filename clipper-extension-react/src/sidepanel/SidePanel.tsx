@@ -22,6 +22,62 @@ const AI_MODELS = [
   { id: 'claude-3-5', name: 'Claude 3.5', icon: Bot, color: '#7c3aed', tag: 'smart' },
 ];
 
+//  模板自动推荐相关配置
+const VIDEO_DOMAINS = ['bilibili.com', 'youtube.com', 'youku.com', 'iqiyi.com', 'v.qq.com'];
+const VIDEO_TEXT_HINTS = ['播放量', '弹幕', 'up主', '订阅', '频道', 'video', 'b站'];
+const MUSIC_DOMAINS = ['y.qq.com', 'music.163.com', 'kugou.com', 'kuwo.cn', 'spotify.com', 'music.apple.com'];
+const MUSIC_TEXT_HINTS = ['歌单', '曲目', '播放列表', 'tracklist', 'album', 'music'];
+const TECH_DOMAINS = ['developer.', 'docs.', 'dev.', 'api.', 'learn.microsoft.com', 'developer.mozilla.org', 'cloud.tencent.com'];
+const TECH_TEXT_HINTS = ['api', '请求参数', 'response', '返回值', '示例代码', '技术文档', 'endpoint', 'sdk'];
+
+const containsKeyword = (input: string, keywords: string[]) => {
+  if (!input) return false;
+  const normalized = input.toLowerCase();
+  return keywords.some(keyword => keyword && normalized.includes(keyword.toLowerCase()));
+};
+
+const detectTemplateRecommendation = (payload: ClipContentPayload | null, templates: templateType[]): string | null => {
+  if (!payload || templates.length === 0) return null;
+  const availableIds = new Set(templates.map(t => t.id));
+  const pickIfAvailable = (id: string) => (availableIds.has(id) ? id : null);
+
+  const urlContext = `${payload.sourceUrl || ''} ${payload.meta?.url || ''} ${payload.meta?.siteName || ''}`.toLowerCase();
+  const textContext = `${payload.text || ''} ${payload.html || ''}`.toLowerCase();
+
+  // 视频检测
+  if (
+    containsKeyword(urlContext, VIDEO_DOMAINS) ||
+    containsKeyword(textContext, VIDEO_TEXT_HINTS) ||
+    textContext.includes('【视频智能剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('video-summary');
+    if (target) return target;
+  }
+
+  // 音乐检测
+  if (
+    containsKeyword(urlContext, MUSIC_DOMAINS) ||
+    containsKeyword(textContext, MUSIC_TEXT_HINTS) ||
+    textContext.includes('【音乐合集剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('music-collection');
+    if (target) return target;
+  }
+
+  // 技术文档检测
+  if (
+    containsKeyword(urlContext, TECH_DOMAINS) ||
+    containsKeyword(textContext, TECH_TEXT_HINTS) ||
+    textContext.includes('【技术文档剪藏】'.toLowerCase())
+  ) {
+    const target = pickIfAvailable('tech-doc');
+    if (target) return target;
+  }
+
+  return pickIfAvailable('summary');
+};
+
+
 
 function SidePanel() {
   // --- 状态管理 ---
@@ -64,6 +120,9 @@ function SidePanel() {
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
+  const [isTemplateLockedByUser, setIsTemplateLockedByUser] = useState(false);
+  const [clipPayload, setClipPayload] = useState<ClipContentPayload | null>(null); // 🟢 保存完整的剪藏内容
   const [status, setStatus] = useState('ready');
 
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); 
@@ -89,7 +148,7 @@ function SidePanel() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
 
-  // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
+  //  1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 's' || event.key === 'S')) {
@@ -175,6 +234,22 @@ function SidePanel() {
     stateRef.current = { currentUrl, currentConversationId, chatHistory };
   }, [currentUrl, currentConversationId, chatHistory]);
 
+  //  自动推荐模板
+  useEffect(() => {
+    if (!clipPayload || templates.length === 0) {
+      setRecommendedTemplateId(null);
+      return;
+    }
+
+    const nextRecommendation = detectTemplateRecommendation(clipPayload, templates);
+    setRecommendedTemplateId(nextRecommendation);
+
+    // 如果用户没有手动选择模板，则自动应用推荐
+    if (!isTemplateLockedByUser && nextRecommendation && nextRecommendation !== selectedTemplateId) {
+      setSelectedTemplateId(nextRecommendation);
+    }
+  }, [clipPayload, templates, isTemplateLockedByUser, selectedTemplateId]);
+
   // --- 主题生效 ---
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
@@ -215,6 +290,10 @@ function SidePanel() {
               setStructuredData(null);
               setView('clipper');
             }
+            // 保存完整的 payload 以便自动推荐使用
+            setClipPayload(payload);
+            // 重置用户选择锁定状态,允许新内容触发自动推荐
+            setIsTemplateLockedByUser(false);
             // 修复：同时更新图片和链接信息
             if (payload.images) {
               setClipImages(payload.images);
@@ -267,6 +346,8 @@ function SidePanel() {
           setStructuredData(null);
           setView('clipper');
         }
+        // 保存完整的 payload
+        setClipPayload(payload);
         // 修复：同时加载图片和链接信息
         if (payload.images) {
           setClipImages(payload.images);
@@ -1336,15 +1417,20 @@ function SidePanel() {
              const Icon = getIconComponent(tpl.iconType);
              // 为音乐合辑模板添加悬停提示
              const tooltip = tpl.id === 'music-collection' ? '支持qq音乐、网易云音乐' : '';
+             const isRecommended = tpl.id === recommendedTemplateId;
              return (
                <div 
                  key={tpl.id} 
                  className={`template-card ${selectedTemplateId===tpl.id ? 'active' : ''}`} 
-                 onClick={() => setSelectedTemplateId(tpl.id)}
+                 onClick={() => {
+                   setSelectedTemplateId(tpl.id);
+                   setIsTemplateLockedByUser(true);
+                 }}
                  title={tooltip}
                >
                  <Icon size={20} /> 
                  <span>{getTemplateName(tpl)}</span>
+                 {isRecommended && <span className="template-badge">推荐</span>}
                </div>
              );
            })
