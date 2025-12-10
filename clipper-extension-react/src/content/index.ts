@@ -875,6 +875,68 @@ function extractMusicContent(): string | null {
   return null;
 }
 
+//  [新] 纯前端 HTML -> Markdown 转换器
+// 专门用于技术文档，保留代码块、标题和链接
+function htmlToMarkdown(root: Element): string {
+  // 1. 克隆节点，避免修改原页面
+  const clone = root.cloneNode(true) as HTMLElement;
+
+  // 🧹 增强清洗规则：移除更多干扰元素
+  const removeSelectors = [
+    'script', 'style', 'iframe', 'svg', 'noscript', 
+    'nav', 'footer', 'header', 
+    '.sidebar', '.aside', '.ad', '.comment', 
+    '.nav-list', '.menu', '.toc', // 移除目录和菜单
+    '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]' // ARIA 角色
+  ];
+  removeSelectors.forEach(sel => {
+    clone.querySelectorAll(sel).forEach(el => el.remove());
+  });
+
+  // 3. 处理代码块 (Tech Doc 核心!)
+  // 把 <pre><code>...</code></pre> 替换为 ```\n...\n```
+  clone.querySelectorAll('pre').forEach(pre => {
+    const code = pre.innerText; // 获取纯文本代码
+    // 简单的替换逻辑，避免破坏 DOM 结构
+    pre.replaceWith(`\n\n\`\`\`\n${code}\n\`\`\`\n\n`);
+  });
+
+  // 4. 处理标题 (保留层级)
+  ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].forEach((tag, index) => {
+    clone.querySelectorAll(tag).forEach(header => {
+      const prefix = '#'.repeat(index + 1);
+      header.replaceWith(`\n\n${prefix} ${header.textContent}\n\n`);
+    });
+  });
+
+  // 5. 处理链接
+  clone.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href');
+    const text = a.textContent?.trim();
+    if (href && text && !href.startsWith('javascript:')) {
+      a.replaceWith(`[${text}](${href})`);
+    }
+  });
+
+  // 6. 处理列表
+  clone.querySelectorAll('li').forEach(li => {
+    li.replaceWith(`\n- ${li.textContent}`);
+  });
+
+  // 7. 处理图片
+  clone.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src');
+    const alt = img.getAttribute('alt') || 'image';
+    if (src) img.replaceWith(`\n![${alt}](${src})\n`);
+  });
+
+  // 8. 获取最终文本并清理多余换行
+  let text = clone.innerText || clone.textContent || '';
+  // 将连续的3个以上换行压缩为2个
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+
 
 function extractUniversalContent(): ClipContentPayload {
 
@@ -890,72 +952,63 @@ const musicContent = extractMusicContent();
   }
   
   //==================================通用逻辑======================================================
+  // const url = window.location.href;
+  // const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
+  // const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
+  // const image = getMetaContent(['meta[property="og:image"]', 'meta[name="twitter:image"]', 'link[rel="image_src"]']);
+  // const ogType = getMetaContent(['meta[property="og:type"]']);
+  // const isVideo = ogType.includes('video') || url.includes('bilibili.com/video') || url.includes('youtube.com/watch');
+  // const meta = getPageMeta();
+  
+  // return {
+  //   text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${resolveUrl(image)})` : ''}`,
+  //   sourceUrl: url,
+  //   meta: meta
+  // };
+
+  // =================================================================================
+  //  通用逻辑 (升级版：支持抓取正文 HTML)
+  // =================================================================================
+  
   const url = window.location.href;
-  const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
-  const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
-  const image = getMetaContent(['meta[property="og:image"]', 'meta[name="twitter:image"]', 'link[rel="image_src"]']);
-  const ogType = getMetaContent(['meta[property="og:type"]']);
-  const isVideo = ogType.includes('video') || url.includes('bilibili.com/video') || url.includes('youtube.com/watch');
+  const title = document.title;
   const meta = getPageMeta();
   
+  // 核心升级：智能寻找网页正文区域
+  // 技术文档、博客通常放在 main, article 或特定的 class 里
+  const contentNode = document.querySelector('main') 
+    || document.querySelector('article') 
+    || document.querySelector('.markdown-body')       // GitHub README
+    || document.querySelector('.documentation-content') // 很多文档站
+    || document.querySelector('.doc-content')
+    || document.querySelector('#content') 
+    || document.body; // 实在找不到就抓整个 body (保底)
+
+ // [关键] 在前端把 HTML 转成 Markdown 字符串
+  console.log('正在前端执行 Markdown 转换...');
+  const markdownText = htmlToMarkdown(contentNode);
+
+  // 组装数据
+  // 我们给它加个头，告诉 AI 这是什么
+  const finalContent = `
+# ${title}
+> 来源：${url}
+> 简介：${meta.description || '暂无'}
+
+---
+${markdownText}
+  `;
+  
   return {
-    text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${resolveUrl(image)})` : ''}`,
+    text: finalContent, // 现在发给后端的是干净的 Markdown 文本！
     sourceUrl: url,
     meta: meta
   };
+
+
+
+
 }
-
-
-//////////////////////// qq 音乐专用提取器 (zyy)/////////////////////////////////////
-// function extractQQMusic(): string | null {
-//   if (!window.location.hostname.includes('y.qq.com')) return null;// 仅在 QQ 音乐域名下运行
-  
-//   console.log('🎵 检测到 QQ 音乐，正在执行专用提取...');
-//   // 核心：直接找歌单列表的行
-//   // QQ音乐网页版的典型 class 是 .songlist__list li 或 .songlist__item
-//   const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
-  
-//   if (rows.length === 0) return null;
-
-//   // 我们在前端直接把数据整理成 Markdown 格式发给后端,后端 AI 只需要做“格式化”
-//   let md = `### 歌单元数据\n\n`;
-  
-//   // 提取封面
-//   const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
-//   if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
-
-//   // 提取简介
-//   const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
-//   if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
-
-//   // 构建表格
-//   md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
-
-//   rows.forEach((row) => {
-//     // 歌名
-//     const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
-//     const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
-//     const link = nameEl ? nameEl.href : '';
-
-//     // 歌手 (可能有多个)
-//     const artistEls = row.querySelectorAll('.songlist__artist a');
-//     const artist = Array.from(artistEls).map(el => el.textContent).join(', ') || 'N/A';
-    
-//     // 专辑
-//     const albumEl = row.querySelector('.songlist__album a');
-//     const album = albumEl ? albumEl.textContent?.trim() : 'N/A';
-    
-//     // 时长
-//     const timeEl = row.querySelector('.songlist__time');
-//     const time = timeEl ? timeEl.textContent?.trim() : 'N/A';
-
-//     // 拼接到 Markdown
-//     md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
-//   });
-
-//   return md;
-// }
-
 
 
 
