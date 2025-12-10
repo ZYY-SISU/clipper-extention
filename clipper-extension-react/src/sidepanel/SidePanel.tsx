@@ -560,7 +560,7 @@ function SidePanel() {
   const MusicCard = (data: any) => {
     const coverUrl = (data.cover && data.cover !== 'N/A') ? data.cover : 'https://via.placeholder.com/150?text=No+Cover';
     
-    // ⚠️ 注意：下面的 HTML 字符串必须【顶格写】，不要有缩进！
+    // 注意：下面的 HTML 字符串必须【顶格写】，不要有缩进！
     // 否则 Markdown 会把它们识别为“代码块”而直接显示源码。
     let musicHtml = `
 <div class="music-card-container">
@@ -734,7 +734,7 @@ function SidePanel() {
            
             setUserInfo(userData);
            
-            // 🟢 传入完整的 userData 进行检查
+            // 传入完整的 userData 进行检查
             checkAndInitConfig(userData);
           } else alert(`${t('alertLoginFail')}: ${json.error}`);
         } catch (e: unknown) {
@@ -744,7 +744,7 @@ function SidePanel() {
       }
     });
   };
-//   传入完整的 userInfo 对象，而不仅仅是 token
+//   传入完整的 userInfo 对象，而不仅仅是 token，以便进行账号冲突检查
   const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id?: string }) => {
     setIsInitializing(true);
     try {
@@ -754,12 +754,12 @@ function SidePanel() {
       //  账号冲突检查
       // 如果本地有配置，但配置的主人(userId)不是当前登录的人(open_id)
       if (localConfig && localConfig.userId !== user.open_id) {
-        console.warn("⚠️ 检测到账号切换，旧配置失效，准备重新初始化...");
-         alert(`⚠️ 检测到账号切换，旧配置失效，准备重新初始化..."`);
+        console.warn("检测到账号切换，旧配置失效，准备重新初始化...");
+         alert(`检测到账号切换，旧配置失效，准备重新初始化..."`);
       } 
       // 如果配置存在且属于当前用户，直接使用
       else if (localConfig) {
-        console.log("✅ 读取到当前用户的配置:", localConfig);
+        console.log("读取到当前用户的配置:", localConfig);
         setUserConfig(localConfig);
         setIsInitializing(false);
         return;
@@ -822,7 +822,7 @@ function SidePanel() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });//获取当前tab
       
 
-      // // 🟢 [核心修改] 旧版逻辑，已废弃
+      // //  [核心修改] 旧版逻辑，已废弃
 
       // const currentTemplate = selectedTemplateId || 'summary';
       // const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
@@ -835,7 +835,7 @@ function SidePanel() {
       //   return;
       // }
 
-           // 🟢 [核心修改] 优先使用数据自带的模板 ID
+           //  [核心修改] 优先使用数据自带的模板 ID
       // 逻辑顺序：数据里的烙印 > 当前UI选中的 > 默认summary
       const templateIdToUse = structuredData.templateId || selectedTemplateId || 'summary';
 
@@ -844,7 +844,7 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
-      // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
+      //  确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
       const finalStructuredData = { ...structuredData };
       
       // 检查原始内容中是否有高亮格式
@@ -1224,7 +1224,8 @@ function SidePanel() {
         if(confirm(t('resetConfirm'))) {
           await chrome.storage.sync.remove(['clipper_conf']);
           setUserConfig(null);
-          alert(t('resetSuccess'));
+          alert("重置成功！\n请重新点击【存入飞书】，系统会自动为你创建新表格。");
+          // alert(t('resetSuccess'));
         }
       }} style={{ marginTop:'auto', padding:14, border:'1px solid var(--danger-color)', color:'var(--danger-color)', background:'transparent', borderRadius:12, cursor:'pointer', fontWeight:600, fontSize:14 }}>
         {t('resetConfig')}
