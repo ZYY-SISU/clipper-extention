@@ -254,10 +254,10 @@ export interface UserConfig {
     description?: string;
     category?: string;
     mainSections?: string[];
-    parameters?: parameterType[];
+    parameters: parameterType[];
     returns?: string;
     examples?: string[];
-    keyPoints?: string[];
+    keyPoints: string[];
     relatedLinks?: string[];
     tags?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
