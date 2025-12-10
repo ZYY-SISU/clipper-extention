@@ -350,12 +350,16 @@ function SidePanel() {
         if (json.code === 200 && Array.isArray(json.data)) setTemplates(json.data);
         else throw new Error();
       } catch (e: unknown) {
+        console.error('Failed to fetch templates:', e);
+        
+        // 失败时的显示逻辑：显示一个“掉线”状态的假模版
         setTemplates([
-          { id: 'summary', name: '智能摘要', iconType: 'text' },
-          { id: 'table', name: '表格提取', iconType: 'table' },
-          { id: 'checklist', name: '清单整理', iconType: 'check' },
-          { id: 'video-summary', name: '视频摘要', iconType: 'Video' },
-          { id: 'tech-doc', name: '技术文档', iconType: 'globe' },
+          { 
+            id: 'error_offline', 
+            name: '模板（离线）', 
+            iconType: 'offline', // 对应上面的 WifiOff 图标
+           // description: '请运行 npm run dev' 
+          }
         ]);
         console.error('Failed to fetch templates:', e);
       } finally { setIsLoadingTemplates(false); }

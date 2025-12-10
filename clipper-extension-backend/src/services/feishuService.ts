@@ -71,7 +71,7 @@ async function addFieldsToTable(userAccessToken: string, appToken: string, table
   }
 }
 
-// 🟢 [核心修改] 初始化用户的飞书多维表格 (一次建两张表)
+//  [核心修改] 初始化用户的飞书多维表格 (一次建两张表)
 export const initUserBase = async (userAccessToken: string) => {
   try {
     console.log("🔍 开始初始化知识库...");
