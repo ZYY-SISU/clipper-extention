@@ -22,8 +22,8 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     startAnalyze: "开始分析",
     // 模版名称
     template_summary: "智能摘要",
-    template_table: "表格提取",
-    template_list: "代办清单",
+    template_tech_doc: "技术文档",
+    template_music_collection: "音乐合辑",
     template_video_summary: "视频摘要",
     // 聊天页
     newChat: "开启新对话",
@@ -96,8 +96,8 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     startAnalyze: "Analyze",
     // Templates
     template_summary: "Summary",
-    template_table: "Table Extraction",
-    template_list: "To-Do List",
+    template_tech_doc: "Tech Docs",
+    template_music_collection: "Music Collection",
     template_video_summary: "Video Summary",
     // Chat
     newChat: "New Chat",

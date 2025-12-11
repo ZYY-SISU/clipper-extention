@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import {
   FileText, Table, CheckSquare, Sparkles, Bot,
   Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
+  Maximize2, Minimize2,// 👈 新增这两个
+  Copy,
   Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
   Download, ChevronUp, FileSpreadsheet
 } from 'lucide-react'; 
@@ -14,6 +17,8 @@ import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
 import './SidePanel.css';
+import CodeBlock from './components/CodeBlock'; // 👈 引入刚才写好的组件
+import TechDocResult from './components/TechDocResult';
 
 const AI_MODELS = [
   { id: 'gpt-4o', name: 'GPT-4o', icon: Zap, color: '#10a37f', tag: 'strong' },
@@ -116,14 +121,34 @@ function SidePanel() {
   const [editingTitle, setEditingTitle] = useState('');
 
   const [singleExportStatus, setSingleExportStatus] = useState<{messageId: number | null, status: 'idle' | 'success', tableUrl?: string}>({messageId: null, status: 'idle'});
-  
+
+ 
   const [templates, setTemplates] = useState<templateType[]>([]); 
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [status, setStatus] = useState('ready');
+
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [showExpandBtn, setShowExpandBtn] = useState(false); // 👈 新增：控制展开按钮是否可见
+
+  // 🟢 [新增] 控制复制反馈的状态 (保存当前正在显示“已复制”对勾的消息索引)
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null); 
+  // 🟢 [新增] 复制处理函数
+  const handleCopy = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      // 2秒后恢复图标
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
   const [isTemplateLockedByUser, setIsTemplateLockedByUser] = useState(false);
   const [clipPayload, setClipPayload] = useState<ClipContentPayload | null>(null); // 🟢 保存完整的剪藏内容
-  const [status, setStatus] = useState('ready');
+
 
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); 
   const [showModelList, setShowModelList] = useState(false); 
@@ -148,8 +173,26 @@ function SidePanel() {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ currentUrl, currentConversationId, chatHistory });
+  const inputRef = useRef<HTMLTextAreaElement>(null); // 👈 新增这一行：用于控制输入框高度
 
-  //  1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
+// 🟢 [修改] 自动调整高度 + 检测是否需要显示展开按钮
+useEffect(() => {
+  if (inputRef.current) {
+    // 先重置高度
+    inputRef.current.style.height = 'auto';
+
+    const scrollHeight = inputRef.current.scrollHeight;
+    const maxHeight = 120; // 与 CSS 中的 max-height 保持一致
+
+    // 设置新高度
+    inputRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+
+    // 🌟 核心逻辑：只有当内容高度超过最大高度时，才显示展开按钮
+    setShowExpandBtn(scrollHeight > maxHeight);
+  }
+}, [userNote]);
+
+  // ✨ 1. 本地键盘监听 (当焦点在 SidePanel 内部时生效)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.altKey && (event.key === 's' || event.key === 'S')) {
@@ -431,12 +474,16 @@ function SidePanel() {
         if (json.code === 200 && Array.isArray(json.data)) setTemplates(json.data);
         else throw new Error();
       } catch (e: unknown) {
+        console.error('Failed to fetch templates:', e);
+        
+        // 失败时的显示逻辑：显示一个“掉线”状态的假模版
         setTemplates([
-          { id: 'summary', name: '智能摘要', iconType: 'text' },
-          { id: 'table', name: '表格提取', iconType: 'table' },
-          { id: 'checklist', name: '清单整理', iconType: 'check' },
-          { id: 'video-summary', name: '视频摘要', iconType: 'Video' },
-          { id: 'tech-doc', name: '技术文档', iconType: 'globe' },
+          { 
+            id: 'error_offline', 
+            name: '模板（离线）', 
+            iconType: 'offline', // 对应上面的 WifiOff 图标
+           // description: '请运行 npm run dev' 
+          }
         ]);
         console.error('Failed to fetch templates:', e);
       } finally { setIsLoadingTemplates(false); }
@@ -556,7 +603,7 @@ function SidePanel() {
   const MusicCard = (data: any) => {
     const coverUrl = (data.cover && data.cover !== 'N/A') ? data.cover : 'https://via.placeholder.com/150?text=No+Cover';
     
-    // ⚠️ 注意：下面的 HTML 字符串必须【顶格写】，不要有缩进！
+    // 注意：下面的 HTML 字符串必须【顶格写】，不要有缩进！
     // 否则 Markdown 会把它们识别为“代码块”而直接显示源码。
     let musicHtml = `
 <div class="music-card-container">
@@ -671,6 +718,18 @@ function SidePanel() {
     }
   };
 
+ // 🟢 [新增] 监听输入内容变化，自动调整输入框高度
+useEffect(() => {
+  if (inputRef.current) {
+    // 先重置高度，以便正确计算 scrollHeight (处理删除文字的情况)
+    inputRef.current.style.height = 'auto';
+    // 设置新高度，最大不超过 120px (约 5 行)
+    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+  }
+}, [userNote]); 
+
+
+
   const handleSend = async () => {
     if (!userNote.trim()) return;
     const currentMsg = userNote;
@@ -730,7 +789,7 @@ function SidePanel() {
            
             setUserInfo(userData);
            
-            // 🟢 传入完整的 userData 进行检查
+            // 传入完整的 userData 进行检查
             checkAndInitConfig(userData);
           } else alert(`${t('alertLoginFail')}: ${json.error}`);
         } catch (e: unknown) {
@@ -740,7 +799,7 @@ function SidePanel() {
       }
     });
   };
-//   传入完整的 userInfo 对象，而不仅仅是 token
+//   传入完整的 userInfo 对象，而不仅仅是 token，以便进行账号冲突检查
   const checkAndInitConfig = async (user: { name: string; avatar: string; token: string; open_id?: string }) => {
     setIsInitializing(true);
     try {
@@ -818,7 +877,7 @@ function SidePanel() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });//获取当前tab
       
 
-      // // 🟢 [核心修改] 旧版逻辑，已废弃
+      // //  [核心修改] 旧版逻辑，已废弃
 
       // const currentTemplate = selectedTemplateId || 'summary';
       // const tableId = userConfig.tables[currentTemplate] || userConfig.tables['default'];
@@ -831,7 +890,7 @@ function SidePanel() {
       //   return;
       // }
 
-           // 🟢 [核心修改] 优先使用数据自带的模板 ID
+           //  [核心修改] 优先使用数据自带的模板 ID
       // 逻辑顺序：数据里的烙印 > 当前UI选中的 > 默认summary
       const templateIdToUse = structuredData.templateId || selectedTemplateId || 'summary';
 
@@ -840,7 +899,7 @@ function SidePanel() {
 
       console.log(`🚀 导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
-      // 🟢 确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
+      //  确保高亮格式被保留：如果原始内容中有高亮标记（==文本==），应用到结构化数据中
       const finalStructuredData = { ...structuredData };
       
       // 检查原始内容中是否有高亮格式
@@ -915,7 +974,18 @@ function SidePanel() {
       const templateIdToUse = message.templateId;
 
       // 根据 ID 去配置里查表
-      const tableId = userConfig?.tables[templateIdToUse] || userConfig?.tables['default'];
+      // 🟢 修复：如果配置中没有 tech-doc 的映射（旧配置），则尝试使用 default，但最好提示用户更新
+      let tableId = userConfig?.tables[templateIdToUse];
+      
+      if (!tableId) {
+        console.warn(`⚠️ 未找到模板 [${templateIdToUse}] 的表格映射，尝试使用默认表`);
+        // 如果是 tech-doc 且没有映射，可能是旧配置，尝试查找 tech-docs (旧名) 或 default
+        if (templateIdToUse === 'tech-doc') {
+           tableId = userConfig?.tables['tech-docs'] || userConfig?.tables['default'];
+        } else {
+           tableId = userConfig?.tables['default'];
+        }
+      }
 
       console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
@@ -1220,7 +1290,8 @@ function SidePanel() {
         if(confirm(t('resetConfirm'))) {
           await chrome.storage.sync.remove(['clipper_conf']);
           setUserConfig(null);
-          alert(t('resetSuccess'));
+          alert("重置成功！\n请重新点击【存入飞书】，系统会自动为你创建新表格。");
+          // alert(t('resetSuccess'));
         }
       }} style={{ marginTop:'auto', padding:14, border:'1px solid var(--danger-color)', color:'var(--danger-color)', background:'transparent', borderRadius:12, cursor:'pointer', fontWeight:600, fontSize:14 }}>
         {t('resetConfig')}
@@ -1239,7 +1310,7 @@ function SidePanel() {
       {clipLinks.length > 0 && (
         <>
           <div className="section-title">
-            <span>🔗 链接 ({clipLinks.length}个)</span>
+            <span>链接 ({clipLinks.length}个)</span>
             <button 
               className="export-excel-btn"
               onClick={() => {
@@ -1338,7 +1409,7 @@ function SidePanel() {
       {clipImages.length > 0 && (
         <>
           <div className="section-title">
-            <span>📷 图片 ({clipImages.length}张)</span>
+            <span>图片 ({clipImages.length}张)</span>
             <button 
               className="download-all-btn"
               onClick={async () => {
@@ -1514,70 +1585,127 @@ function SidePanel() {
         </div>
       )}
       {chatHistory.map((msg, i) => (
-        <div key={i} className={`message ${msg.role}`}>
-          {msg.role === 'ai' ? (
-            <div className="ai-message-container">
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
-              <div style={{display: 'flex', gap: 8, marginTop: 8}}>
-                <button className="export-single-btn" title={t('saveToFeishu')} onClick={() => handleExportSingleMessage(msg, i)}>
-                  <CloudUpload size={16} />
-                  <span>{t('export')}</span>
-                </button>
-                <button className="export-single-btn" title="添加感想" onClick={() => {
-                  setEditingNoteIndex(i);
-                  setNoteInput(msg.notes || '');
-                }}>
-                  <StickyNote size={16} />
-                  <span>感想</span>
-                </button>
+  <div key={i} className={msg.role === 'user' ? 'user-message-wrapper' : 'ai-message-wrapper'}>
+    {msg.role === 'ai' ? (
+      <div className="message ai">
+        <div className="ai-message-container">
+          {msg.templateId === 'tech-doc' && msg.structuredData ? (
+            <TechDocResult data={msg.structuredData as TechDocType} />
+          ) : (
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} theme={theme} />
+                  ) : (
+                    <code className={className} {...props}>{children}</code>
+                  );
+                }
+              }}
+            >
+              {msg.text}
+            </ReactMarkdown>
+          )}
+
+          {/* 感想显示与编辑区域 */}
+          {msg.notes && (
+            <div className="note-display-area">
+              <div className="note-header">
+                <div className="note-title">
+                  <StickyNote size={15} />
+                  <span>我的感想</span>
+                </div>
+                {msg.notes.length > 100 && (
+                  <button className="note-toggle-btn" onClick={() => {
+                    setExpandedNotes(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(i)) newSet.delete(i);
+                      else newSet.add(i);
+                      return newSet;
+                    });
+                  }}>
+                    {expandedNotes.has(i) ? '收起' : '展开'}
+                  </button>
+                )}
               </div>
-              {/* 感想显示区域 */}
-              {msg.notes && (
-                <div style={{marginTop: 12, padding: 12, background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border-color)'}}>
-                  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)'}}>
-                      <StickyNote size={14} />
-                      <span>我的感想</span>
-                    </div>
-                    {msg.notes.length > 100 && (
-                      <button onClick={() => setExpandedNotes(prev => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(i)) {
-                          newSet.delete(i);
-                        } else {
-                          newSet.add(i);
-                        }
-                        return newSet;
-                      })} style={{padding: '2px 8px', borderRadius: 12, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11}}>
-                        {expandedNotes.has(i) ? '收起' : '展开'}
-                      </button>
-                    )}
-                  </div>
-                  <div style={{fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5}}>
-                    {msg.notes.length > 100 && !expandedNotes.has(i) ? msg.notes.substring(0, 100) + '...' : msg.notes}
-                  </div>
-                </div>
-              )}
-              
-              {/* 感想输入框 */}
-              {editingNoteIndex === i && (
-                <div style={{marginTop: 12, padding: 12, background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border-color)'}}>
-                  <textarea
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="写下你的感想..."
-                    style={{width: '100%', minHeight: 80, padding: 10, borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', resize: 'vertical', fontSize: 13}}
-                  />
-                  <div style={{display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end'}}>
-                    <button onClick={() => setEditingNoteIndex(null)} style={{padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13}}>取消</button>
-                    <button onClick={handleSaveNote} style={{padding: '6px 12px', borderRadius: 6, border: '1px solid var(--gemini-blue)', background: 'var(--gemini-blue)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600}}>保存</button>
-                  </div>
-                </div>
-              )}
+              <div className="note-content">
+                {msg.notes.length > 100 && !expandedNotes.has(i) ? msg.notes.substring(0, 100) + '...' : msg.notes}
+              </div>
             </div>
-          ) : msg.text}
+          )}
+          {editingNoteIndex === i && (
+            <div className="note-editor-area">
+              <textarea className="note-textarea" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="写下你的感想..." autoFocus />
+              <div className="note-editor-actions">
+                <button className="note-action-btn note-btn-cancel" onClick={() => setEditingNoteIndex(null)}>取消</button>
+                <button className="note-action-btn note-btn-save" onClick={handleSaveNote}>保存</button>
+              </div>
+            </div>
+          )}
         </div>
-      ))}
+
+        {/* ✅ 统一底部操作栏，避免重复 */}
+        <div className="ai-message-actions">
+          {/* 复制 */}
+          <button 
+            className={`message-action-btn ${copiedIndex === i ? 'copied' : ''}`} 
+            onClick={() => handleCopy(msg.text, i)}
+            title={copiedIndex === i ? '已复制' : '复制内容'}
+          >
+            {copiedIndex === i ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+
+          {/* 导出 */}
+          <button 
+            className="message-action-btn" 
+            title={t('saveToFeishu')} 
+            onClick={() => handleExportSingleMessage(msg, i)}
+          >
+            <CloudUpload size={16} />
+          </button>
+
+          {/* 感想 */}
+          <button 
+            className="message-action-btn" 
+            title="添加感想" 
+            onClick={() => {
+              setEditingNoteIndex(i);
+              setNoteInput(msg.notes || '');
+            }}
+          >
+            <StickyNote size={16} />
+          </button>
+        </div>
+      </div>
+    ) : (
+
+      <>
+        {/* 1. 用户消息气泡 */}
+        <div className="message user">
+          <div className="user-message-content">
+            {msg.text}
+          </div>
+        </div>
+
+        {/* 2. 用户底部悬浮操作栏 */}
+        <div className="user-message-actions">
+          {/* 仅复制按钮 */}
+          <button 
+            className={`message-action-btn ${copiedIndex === i ? 'copied' : ''}`}
+            onClick={() => handleCopy(msg.text, i)}
+            title={copiedIndex === i ? '已复制' : '复制'}
+          >
+            {copiedIndex === i ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </div>
+      </>
+    )}
+  </div>
+))}
+
       
       {/* 导出成功弹窗 */}
       {singleExportStatus.status === 'success' && singleExportStatus.tableUrl && (
@@ -1643,17 +1771,37 @@ function SidePanel() {
               </div>
             )}
           </div>
-          <div className="chat-input-wrapper">
-            <input
-              className="chat-input"
-              value={userNote}
-              onChange={(e) => setUserNote(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={t('inputPlaceholder')}
-              autoFocus
-            />
-            <button className="send-btn-round" onClick={handleSend}><Send size={20} /></button>
-          </div>
+      <div className={`chat-input-wrapper ${isInputExpanded ? 'expanded' : ''} ${showExpandBtn ? 'has-overflow' : ''}`}>
+
+          {/* ✨ 展开按钮：逻辑修改为 (有溢出 OR 已经是展开状态) 才显示 */}
+          {(showExpandBtn || isInputExpanded) && (
+            <button 
+              className="expand-input-btn"
+              onClick={() => setIsInputExpanded(!isInputExpanded)}
+              title={isInputExpanded ? "收起" : "展开全屏"}
+            >
+              {isInputExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
+
+        <textarea
+          ref={inputRef}
+          className="chat-input"
+          value={userNote}
+          onChange={(e) => setUserNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+              // 发送后如果是展开状态，可以选择是否自动收起，这里暂时保持原状
+            }
+          }}
+          placeholder={t('inputPlaceholder')}
+          autoFocus
+          rows={1}
+        />
+        <button className="send-btn-round" onClick={handleSend}><Send size={20} /></button>
+        </div>
         </div>
       </div>
     </div>
@@ -1733,7 +1881,7 @@ function SidePanel() {
 
   return (
     // ✨ 控制显示/隐藏
-   <div className={`sidepanel-container ${isVisible ? '' : 'hidden'}`}>
+   <div className="sidepanel-container" style={{ display: isVisible ? 'flex' : 'none' }}>
       <div className="header">
         <div className="header-left">
           <button className="icon-btn" onClick={() => setShowHistory(true)} title={t('history')}><Menu size={22}/></button>

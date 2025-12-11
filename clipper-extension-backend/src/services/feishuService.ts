@@ -3,7 +3,7 @@
 import axios from 'axios';
 import { FeishuData, SaveOptions } from '../types';
 
-// 🟢 1. 定义两套不同的表结构 (Schema)
+// 表结构 (Schema)
 // 摘要表：基础信息
 const FIELDS_SUMMARY = [
   { field_name: "标题", type: 1 },
@@ -46,16 +46,36 @@ const FIELDS_MUSIC = [
   { field_name: "个人感想", type: 1 }
 ];
 
+//技术文档表 (新增)
+const FIELDS_TECH_DOC = [
+  { field_name: "标题", type: 1 },
+  { field_name: "描述", type: 1 },
+  { field_name: "参数列表", type: 1 }, // 文本类型，存储格式化后的参数
+  { field_name: "返回值", type: 1 },
+  { field_name: "示例代码", type: 1 },
+  { field_name: "核心要点", type: 1 },
+  { field_name: "相关链接", type: 1 }, // 文本类型，存储 Title | URL
+  { field_name: "标签", type: 1 },
+  { field_name: "个人感想", type: 1 },
+  { field_name: "原文链接", type: 15 }
+];
+
+
 // 映射关系
 const TABLES_CONFIG = [
   { key: 'summary', name: 'AI剪藏-摘要', fields: FIELDS_SUMMARY },
   { key: 'video-summary', name: 'AI剪藏-视频', fields: FIELDS_VIDEO },
-  { key: 'music-collection', name: 'AI剪藏-音乐', fields: FIELDS_MUSIC } // 👈 新增
+  { key: 'music-collection', name: 'AI剪藏-音乐', fields: FIELDS_MUSIC } ,//新
+  { key: 'tech-doc', name: 'AI剪藏-技术文档', fields: FIELDS_TECH_DOC}// 新
 ];
+
+
 
 // 辅助：给指定表添加字段
 async function addFieldsToTable(userAccessToken: string, appToken: string, tableId: string, fields: any[]) {
   for (const field of fields) {
+
+    // if (field.field_name === "标题") { continue; } //如果是标题就跳过
     try {
       await axios.post(
         `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields`,
@@ -71,7 +91,69 @@ async function addFieldsToTable(userAccessToken: string, appToken: string, table
   }
 }
 
-// 🟢 [核心修改] 初始化用户的飞书多维表格 (一次建两张表)
+/**
+ * 🧹 辅助函数：清洗表的默认字段
+ * 1. 找出所有字段
+ * 2. 把索引列(is_primary=true) 改名为 "标题"
+ * 3. 把其他系统自带的字段全部删除
+ */
+async function cleanDefaultFields(appToken: string, tableId: string, accessToken: string) {
+    try {
+        // console.log("⏳ 等待飞书后台资源就绪 (2秒)...");
+        // await new Promise(resolve => setTimeout(resolve, 2000));
+
+        console.log(`🧹 开始清洗表 [${tableId}] 的默认字段...`);
+        
+        // 1. 获取所有字段
+        const fieldsRes = await axios.get(
+            `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        
+        const fields = fieldsRes.data.data.items;
+
+        for (const field of fields) {
+            // 如果是索引列
+            if (field.is_primary) {
+                // 如果它本来就叫“标题”，那就不用改了
+                if (field.field_name === "标题") {
+                    console.log("✅ 索引列已经是[标题]，跳过修改");
+                    continue; 
+                }
+                console.log(`🔧 尝试修改索引列 [${field.field_name}] -> [标题]`);
+                try {
+                    await axios.put(
+                        `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${field.field_id}`,
+                        { 
+                          field_name: "标题",
+                          type: field.type,              // 保持原类型
+                          property: field.property || {},// 保持原配置（如果有就透传）
+                          is_primary: field.is_primary   // 继续保持它是主列    
+                        }, 
+                        { headers: { Authorization: `Bearer ${accessToken}` } }
+                    );
+                    console.log("✅ 改名成功");
+                } catch (err: any) {
+                    // 如果改名失败（比如400），通常是因为名字冲突或非法
+                    console.warn(`改名失败 (Code: ${err.response?.data?.code}):`, err.response?.data?.msg);
+                    // 策略B：如果改名失败，就不管它了，直接用它
+                }
+            } 
+            // 如果是普通字段
+            else {
+                console.log(`🗑️ 删除默认冗余字段: ${field.field_name}`);
+                await axios.delete(
+                    `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${field.field_id}`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } }
+                ).catch((e) => console.warn("删除失败:", e.message));
+            }
+        }
+    } catch (e: any) {
+        console.error("❌ 清洗流程异常:", e.message);
+    }
+  }
+
+//  [核心修改] 初始化用户的飞书多维表格 (一次建两张表)
 export const initUserBase = async (userAccessToken: string) => {
   try {
     console.log("🔍 开始初始化知识库...");
@@ -84,21 +166,31 @@ export const initUserBase = async (userAccessToken: string) => {
     );
     if (createAppRes.data.code !== 0) throw new Error(`创建失败: ${createAppRes.data.msg}`);
 
+    // 👇👇👇加上这个延时 👇👇👇
+    console.log("⏳ 等待飞书后台资源就绪 (2秒)...");
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     const appToken = createAppRes.data.data.app.app_token;
     const table1Id = createAppRes.data.data.app.default_table_id; // 默认那张表
+
+   
 
     // 2. 初始化 Table 1 (智能摘要)
     console.log(`🛠️ 正在配置表1 [智能摘要] (${table1Id})...`);
     // 改名
     try {
+      // console.log("⏳ 等待飞书后台资源就绪 (2秒)...");
+      // await new Promise(resolve => setTimeout(resolve, 2000));
+
       await axios.put(
         `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${table1Id}`,
         { name: "智能摘要" },
         { headers: { Authorization: `Bearer ${userAccessToken}` } }
       );
     } catch (e) {}
-    // 加列
-    await addFieldsToTable(userAccessToken, appToken, table1Id, FIELDS_SUMMARY);
+
+    await cleanDefaultFields(appToken, table1Id, userAccessToken);// 清洗默认字段
+    await addFieldsToTable(userAccessToken, appToken, table1Id, FIELDS_SUMMARY);    // 加列
 
     // 3. 初始化 Table 2 (视频剪藏)
     console.log(`🛠️ 正在创建表2 [视频剪藏]...`);
@@ -107,11 +199,13 @@ export const initUserBase = async (userAccessToken: string) => {
         { table: { name: "视频剪藏" } },
         { headers: { Authorization: `Bearer ${userAccessToken}` } }
     );
+    
     const table2Id = createTable2Res.data.data.table_id;
-    // 加列
-    await addFieldsToTable(userAccessToken, appToken, table2Id, FIELDS_VIDEO);
+    await cleanDefaultFields(appToken, table2Id, userAccessToken); // 清洗默认字段
+    await addFieldsToTable(userAccessToken, appToken, table2Id, FIELDS_VIDEO); // 加列
 
-    // 4. 初始化 Table 3 (音乐合辑) 👈 新增
+
+    // 4. 初始化 Table 3 (音乐合辑) 
     console.log(`🛠️ 正在创建表3 [音乐合辑]...`);
     const createTable3Res = await axios.post(
         `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables`,
@@ -119,21 +213,36 @@ export const initUserBase = async (userAccessToken: string) => {
         { headers: { Authorization: `Bearer ${userAccessToken}` } }
     );
     const table3Id = createTable3Res.data.data.table_id;
-    // 加列
-    await addFieldsToTable(userAccessToken, appToken, table3Id, FIELDS_MUSIC);
+     await cleanDefaultFields(appToken, table3Id, userAccessToken);// 清洗默认字段
+    await addFieldsToTable(userAccessToken, appToken, table3Id, FIELDS_MUSIC); // 加列
+
+    // 5. 初始化 Table 4 (技术文档) 
+    console.log(`🛠️ 正在创建表4 [技术文档]...`);
+    const createTable4Res = await axios.post(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables`,
+        { table: { name: "技术文档" } },
+        { headers: { Authorization: `Bearer ${userAccessToken}` } }
+    );
+    const table4Id = createTable4Res.data.data.table_id;
+     await cleanDefaultFields(appToken, table4Id, userAccessToken);
+    await addFieldsToTable(userAccessToken, appToken, table4Id, FIELDS_SUMMARY); // 加列
+  
 
     console.log("✅ 初始化完成！");
     console.log("摘要表格ID:", table1Id);
     console.log("视频表格ID:", table2Id);
     console.log("音乐表格ID:", table3Id);
+    console.log("技术文档表格ID:", table4Id);
+    
 
-    // 🟢 返回映射表：告诉前端哪个模版用哪个ID
+    // 返回映射表：告诉前端哪个模版用哪个ID
     return {
       appToken: appToken,
       tables: {
         "summary": table1Id,  // 摘要模版 -> 表1
         "video-summary": table2Id, // 视频模版 -> 表2
         "music-collection": table3Id, // 音乐模版 -> 表3
+        "tech-docs": table4Id, // 技术文档模版 -> 表4
         "default": table1Id   // 兜底
       }
     };
@@ -143,6 +252,11 @@ export const initUserBase = async (userAccessToken: string) => {
     throw new Error("无法自动创建飞书表格");
   }
 };
+
+
+
+
+
 
 // 获取飞书表的字段列表
 export const getTableFields = async (appToken: string, tableId: string, accessToken: string) => {
@@ -156,6 +270,9 @@ export const getTableFields = async (appToken: string, tableId: string, accessTo
 
   return res.data.data.items.map((f: any) => f.field_name);
 };
+
+
+
 
 ////////////////////////新修改结构实现单条导入和批量导入//////////////////////////
 export const addRecord = async (data: any, options: SaveOptions) => {
@@ -259,6 +376,43 @@ async function addSingleRecord(data: any, options: SaveOptions) {
     console.log(`✨ 检测到 ${data.highlights.length} 处高亮`);
     // 使用 ||| 分隔符连接所有高亮文本
     candidateFields["高亮内容"] = data.highlights.map((h: any) => h.text).join('|||');
+  }
+
+  // 🟢 技术文档字段处理
+  if (data.description) candidateFields["描述"] = data.description;
+  
+  if (data.parameters && Array.isArray(data.parameters) && data.parameters.length > 0) {
+    // 格式化参数列表: name (type): description [Required/Optional]
+    candidateFields["参数列表"] = data.parameters.map((p: any) => {
+      const req = p.required ? "[必填]" : "[可选]";
+      const def = p.default ? ` (默认: ${p.default})` : "";
+      return `- ${p.name} (${p.type}) ${req}${def}: ${p.description || p.desc || ''}`;
+    }).join('\n');
+  }
+
+  if (data.returns) candidateFields["返回值"] = data.returns;
+
+  if (data.examples && Array.isArray(data.examples) && data.examples.length > 0) {
+    // 格式化示例代码
+    candidateFields["示例代码"] = data.examples.map((ex: any) => {
+      if (typeof ex === 'string') return ex;
+      const lang = ex.lang || 'text';
+      const code = ex.code || '';
+      return `\`\`\`${lang}\n${code}\n\`\`\``;
+    }).join('\n\n');
+  }
+
+  if (data.keyPoints && Array.isArray(data.keyPoints) && data.keyPoints.length > 0) {
+    candidateFields["核心要点"] = data.keyPoints.map((k: string) => `- ${k}`).join('\n');
+  }
+
+  if (data.relatedLinks && Array.isArray(data.relatedLinks) && data.relatedLinks.length > 0) {
+    candidateFields["相关链接"] = data.relatedLinks.map((l: any) => {
+      if (typeof l === 'string') return l;
+      const title = l.title || '链接';
+      const url = l.url || '';
+      return `${title} | ${url}`; 
+    }).join('\n');
   }
 
   // 3. 过滤字段

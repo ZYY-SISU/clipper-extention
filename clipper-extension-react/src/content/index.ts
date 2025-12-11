@@ -4,6 +4,43 @@ console.log('AI剪藏助手：通用智能抓取脚本已就绪');
 // ============【类型定义】=================
 import type{ SelectionData, PageMeta, PageData, ImageData, LinkData, ClipContentPayload, HighlightInfo } from '../types/index';
 
+// =============【图标工具函数 - 替换emoji】================
+/**
+ * 获取SVG图标字符串（用于替代emoji）
+ * 基于lucide-react图标库的SVG路径
+ */
+function getIconSVG(iconName: string, size: number = 16, color: string = 'currentColor'): string {
+  const icons: Record<string, string> = {
+    'package': '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
+    'book': '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path>',
+    'lightbulb': '<line x1="9" y1="18" x2="9.01" y2="18"></line><line x1="15" y1="18" x2="15.01" y2="18"></line><path d="M9 9a3 3 0 0 1 6 0c0 2-3 3-3 3"></path><path d="M12 3v3"></path>',
+    'shopping-bag': '<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path>',
+    'newspaper': '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8Z"></path>',
+    'video': '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect>',
+    'link': '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>',
+    'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>',
+    'music': '<circle cx="9" cy="18" r="4"></circle><path d="M9 18V2l13-1v13"></path>',
+    'sparkles': '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>',
+    'merge': '<path d="M8 18h8M8 12h8M8 6h8"></path><circle cx="4" cy="6" r="1.5"></circle><circle cx="4" cy="12" r="1.5"></circle><circle cx="4" cy="18" r="1.5"></circle>',
+    'batch': '<rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect>',
+    'compare': '<path d="M21 21l-6-6m6 6v-4.8m0 4.8h-4.8"></path><path d="M3 16.2V21m0 0h4.8M3 21l6-6"></path><path d="M21 7.8V3m0 0h-4.8M21 3l-6 6"></path><path d="M3 7.8V3m0 0h4.8M3 3l6 6"></path>',
+    'code': '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
+    'bug': '<path d="m8 2 1.88 1.88"></path><path d="M14.12 3.88 16 2"></path><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"></path><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6Z"></path><path d="M12 20v-9"></path><path d="M6.53 9C4.6 8.8 3 7.1 3 5"></path><path d="M6 13H2"></path><path d="M3 21c0-2.1 1.7-3.9 3.8-4"></path><path d="M21 21c-2.1 0-3.8-1.9-3.8-4"></path><path d="M18 13h4"></path><path d="M17.47 9c1.93-.2 3.53-1.9 3.53-4"></path>',
+    'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 5H8"></path>',
+    'highlighter': '<path d="m9 11-6 6v3h3l6-6"></path><path d="m21.5 11.5-6.5 6.5-4-4 6.5-6.5a2.5 2.5 0 1 1 4 4Z"></path>',
+  };
+  
+  const path = icons[iconName] || icons['sparkles'];
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+}
+
+/**
+ * 获取图标HTML（用于内联显示）
+ */
+function getIconHTML(iconName: string, size: number = 16, color: string = 'currentColor'): string {
+  return getIconSVG(iconName, size, color);
+}
+
 // =============【状态管理】================
 let toolbar: HTMLElement | null = null;
 let selectedData: SelectionData | null = null;
@@ -44,7 +81,7 @@ interface ContentTypeDetection {
 // 第二层：识别网页类型
 interface PageTypeDetection {
   type: string;
-  autoActions: Array<{label: string; action: string; autoExecute?: boolean}>;
+  autoActions: Array<{label: string; action: string; autoExecute?: boolean; icon?: string}>;
 }
 
 // 第三层：识别用户行为意图
@@ -55,72 +92,115 @@ interface UserIntentDetection {
 }
 
 // =============【智能意图识别系统 - 实现函数】================
-// 第一层：识别内容类型 → 自动推荐模板
+// 第一层：识别内容类型 → 自动推荐模板（优化版：提高检测精度）
 function detectContentType(selection: Selection, range: Range): ContentTypeDetection {
   const selectedText = selection.toString().trim();
   const container = range.commonAncestorContainer as HTMLElement;
+  const parentElement = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as HTMLElement;
   
-  // 1. 检测代码片段
-  const codeElements = container.querySelectorAll('pre, code, .highlight, .code-block');
-  if (codeElements.length > 0 || /^[\s\S]*\{[\s\S]*\}$/.test(selectedText) || /function\s+\w+\s*\(/.test(selectedText)) {
+  // 计算文本特征
+  const textLength = selectedText.length;
+  const lineCount = selectedText.split('\n').length;
+  const hasSpecialChars = /[{}();=]/.test(selectedText);
+  const hasNumbers = /\d/.test(selectedText);
+  
+  // 1. 检测代码片段（增强版：更精确的代码识别）
+  const codeElements = parentElement?.querySelectorAll('pre, code, .highlight, .code-block, [class*="code"]') || [];
+  const codeIndicators = [
+    codeElements.length > 0,
+    /^[\s\S]*\{[\s\S]*\}$/.test(selectedText), // 包含大括号
+    /function\s+\w+\s*\(/.test(selectedText), // 函数定义
+    /(const|let|var)\s+\w+\s*=/.test(selectedText), // 变量声明
+    /(def|class|import|from)\s+\w+/.test(selectedText), // Python/JS关键字
+    /(public|private|static|void|class)\s+/.test(selectedText), // Java关键字
+    hasSpecialChars && lineCount > 1 && (hasSpecialChars || /[{}();=]/.test(selectedText)), // 多行且包含特殊字符
+    parentElement?.closest('pre, code, .code-block, [class*="code"]') !== null // 在代码容器内
+  ];
+  const codeScore = codeIndicators.filter(Boolean).length;
+  if (codeScore >= 2) {
     const codeText = Array.from(codeElements).map(el => el.textContent).join('\n') || selectedText;
     const language = detectCodeLanguage(codeText);
     return {
       type: 'code',
-      confidence: 0.9,
+      confidence: Math.min(0.95, 0.7 + codeScore * 0.05), // 动态置信度
       template: 'code-snippet',
       prefillFields: { language, code: codeText, sourceUrl: window.location.href }
     };
   }
   
-  // 2. 检测表格
-  const tableElement = container.closest('table') || container.querySelector('table');
+  // 2. 检测表格（增强版：更精确的表格识别）
+  const tableElement = parentElement?.closest('table') || parentElement?.querySelector('table');
   if (tableElement) {
-    const tableData = extractTableData(tableElement);
-    return {
-      type: 'table',
-      confidence: 0.95,
-      template: 'table-extract',
-      prefillFields: { headers: tableData.headers, rows: tableData.rows }
-    };
+    const rows = tableElement.querySelectorAll('tr');
+    const hasHeader = tableElement.querySelector('thead, th') !== null;
+    if (rows.length >= 2) { // 至少2行才认为是表格
+      const tableData = extractTableData(tableElement);
+      return {
+        type: 'table',
+        confidence: 0.95 + (hasHeader ? 0.03 : 0), // 有表头提高置信度
+        template: 'table-extract',
+        prefillFields: { headers: tableData.headers, rows: tableData.rows }
+      };
+    }
   }
   
-  // 3. 检测API文档
-  if (/^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(selectedText) || 
-      container.querySelector('.api-endpoint, .api-doc, [class*="api"]')) {
+  // 3. 检测API文档（增强版：更精确的API识别）
+  const apiIndicators = [
+    /^(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\s+\//.test(selectedText), // HTTP方法
+    /\/api\/|\/v\d+\//.test(selectedText), // API路径模式
+    /(endpoint|api|request|response|status\s*code)/i.test(selectedText), // API关键词
+    parentElement?.querySelector('.api-endpoint, .api-doc, [class*="api"], [class*="endpoint"]') !== null,
+    /(query|body|params|headers?)\s*[:=]/.test(selectedText) // 请求参数模式
+  ];
+  const apiScore = apiIndicators.filter(Boolean).length;
+  if (apiScore >= 2) {
+    const methodMatch = selectedText.match(/^(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)/);
+    const endpointMatch = selectedText.match(/(?:https?:\/\/[^\s]+|\/[^\s]+)/);
     return {
       type: 'api-doc',
-      confidence: 0.85,
+      confidence: Math.min(0.95, 0.75 + apiScore * 0.05),
       template: 'api-doc',
       prefillFields: {
-        endpoint: selectedText.match(/^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)/)?.[2],
-        method: selectedText.match(/^(GET|POST|PUT|DELETE|PATCH)/)?.[1]
+        endpoint: endpointMatch?.[0] || selectedText.match(/^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)/)?.[2],
+        method: methodMatch?.[1] || 'GET'
       }
     };
   }
   
-  // 4. 检测商品信息
-  if (/\d+\.\d+元|¥\d+|价格|加入购物车/i.test(selectedText) ||
-      container.querySelector('.product-info, .price, [class*="product"]')) {
+  // 4. 检测商品信息（增强版：更精确的商品识别）
+  const productIndicators = [
+    /(¥|\$|元|价格|￥)\s*\d+/.test(selectedText), // 价格格式
+    /(加入购物车|立即购买|库存|销量|评价)/i.test(selectedText), // 电商关键词
+    parentElement?.querySelector('.product-info, .price, [class*="product"], [class*="goods"]') !== null,
+    /(商品|产品|规格|型号|品牌)/i.test(selectedText) && hasNumbers // 商品描述+数字
+  ];
+  const productScore = productIndicators.filter(Boolean).length;
+  if (productScore >= 2) {
     return {
       type: 'product',
-      confidence: 0.8,
+      confidence: Math.min(0.9, 0.7 + productScore * 0.05),
       template: 'ecommerce-product',
       prefillFields: {
-        price: selectedText.match(/[¥$]\d+\.?\d*/)?.[0],
-        productName: container.querySelector('h1, .product-title')?.textContent || ''
+        price: selectedText.match(/[¥$￥]\s*\d+\.?\d*/)?.[0] || selectedText.match(/\d+\.?\d*\s*元/)?.[0],
+        productName: parentElement?.querySelector('h1, .product-title, [class*="title"]')?.textContent?.trim() || ''
       }
     };
   }
   
-  // 5. 检测联系方式
-  const phoneRegex = /1[3-9]\d{9}/;
-  const emailRegex = /[\w\.-]+@[\w\.-]+\.\w+/;
-  if (phoneRegex.test(selectedText) || emailRegex.test(selectedText) || 
-      /联系我们|联系方式/i.test(selectedText)) {
+  // 5. 检测联系方式（增强版：更精确的联系方式识别）
+  const phoneRegex = /(1[3-9]\d{9}|(\d{3,4}[- ]?)?\d{7,8})/;
+  const emailRegex = /[\w\.-]+@[\w\.-]+\.\w{2,}/;
+  const contactIndicators = [
+    phoneRegex.test(selectedText),
+    emailRegex.test(selectedText),
+    /(电话|手机|联系|邮箱|email|tel|phone)/i.test(selectedText),
+    parentElement?.querySelector('[href^="tel:"], [href^="mailto:"]') !== null
+  ];
+  const contactScore = contactIndicators.filter(Boolean).length;
+  if (contactScore >= 2) {
     return {
       type: 'contact',
-      confidence: 0.9,
+      confidence: Math.min(0.95, 0.8 + contactScore * 0.05),
       template: 'contact',
       prefillFields: {
         phone: selectedText.match(phoneRegex)?.[0],
@@ -129,17 +209,134 @@ function detectContentType(selection: Selection, range: Range): ContentTypeDetec
     };
   }
   
-  // 6. 普通段落（降低阈值，让普通文本也能被识别）
-  if (selectedText.length > 10) {
+  // 6. 检测列表（增强版：更精确的列表识别）
+  const listElement = parentElement?.closest('ul, ol, dl') || parentElement?.querySelector('ul, ol, dl');
+  const listItemCount = selectedText.split('\n').filter(line => {
+    const trimmed = line.trim();
+    return /^[-*•\d+\.]/.test(trimmed) || /^[a-zA-Z]\)/.test(trimmed) || trimmed.startsWith('·');
+  }).length;
+  
+  if (listElement || listItemCount >= 2) {
+    const isOrderedList = /^\d+[\.\)]/.test(selectedText.split('\n')[0]?.trim() || '');
+    const listType = isOrderedList ? 'ordered-list' : 'unordered-list';
     return {
-      type: 'paragraph',
-      confidence: 0.6, // 降低阈值，让普通段落也能被识别
+      type: 'list',
+      confidence: listItemCount >= 3 ? 0.9 : 0.75,
       template: 'summary',
-      prefillFields: { title: document.title, summary: selectedText.substring(0, 200), originalText: selectedText }
+      prefillFields: { 
+        title: document.title, 
+        summary: selectedText, 
+        originalText: selectedText,
+        listType 
+      }
     };
   }
   
-  // 7. 未知类型（但至少返回一个结果）
+  // 7. 检测引用/引用块（新增）
+  const quoteElement = parentElement?.closest('blockquote, .quote, [class*="quote"]') || 
+                       parentElement?.querySelector('blockquote, .quote');
+  if (quoteElement || selectedText.startsWith('"') || selectedText.startsWith('「') || selectedText.startsWith('"')) {
+    return {
+      type: 'quote',
+      confidence: 0.85,
+      template: 'summary',
+      prefillFields: { title: document.title, summary: selectedText, originalText: selectedText }
+    };
+  }
+  
+  // 8. 检测标题（新增）
+  const headingElement = parentElement?.closest('h1, h2, h3, h4, h5, h6, .title, .heading') ||
+                         parentElement?.querySelector('h1, h2, h3, h4, h5, h6');
+  if (headingElement || (textLength < 100 && lineCount === 1 && !hasSpecialChars)) {
+    const headingLevel = headingElement?.tagName?.match(/h(\d)/)?.[1] || '1';
+    return {
+      type: 'heading',
+      confidence: 0.8,
+      template: 'summary',
+      prefillFields: { 
+        title: selectedText, 
+        summary: '', 
+        originalText: selectedText,
+        headingLevel: parseInt(headingLevel)
+      }
+    };
+  }
+  
+  // 9. 检测日期时间（新增）
+  const dateTimePatterns = [
+    /\d{4}[-/]\d{1,2}[-/]\d{1,2}/, // YYYY-MM-DD
+    /\d{1,2}\/\d{1,2}\/\d{4}/, // MM/DD/YYYY
+    /\d{4}年\d{1,2}月\d{1,2}日/, // 中文日期
+    /\d{1,2}:\d{2}(:\d{2})?/, // 时间
+    /(今天|明天|昨天|本周|下周|上周|本月|下月|上月)/i
+  ];
+  if (dateTimePatterns.some(pattern => pattern.test(selectedText)) && textLength < 50) {
+    return {
+      type: 'datetime',
+      confidence: 0.9,
+      template: 'summary',
+      prefillFields: { title: document.title, summary: selectedText, originalText: selectedText }
+    };
+  }
+  
+  // 10. 检测链接/URL（新增）
+  const urlPattern = /https?:\/\/[^\s]+|www\.[^\s]+/i;
+  if (urlPattern.test(selectedText) && textLength < 200) {
+    const urls = selectedText.match(urlPattern);
+    return {
+      type: 'link',
+      confidence: 0.95,
+      template: 'summary',
+      prefillFields: { 
+        title: document.title, 
+        summary: selectedText, 
+        originalText: selectedText,
+        urls: urls || []
+      }
+    };
+  }
+  
+  // 11. 检测图片描述（新增）
+  const imageElement = parentElement?.closest('img')?.parentElement || 
+                       parentElement?.querySelector('img');
+  if (imageElement && textLength < 200) {
+    const imgAlt = (imageElement as HTMLImageElement).alt || '';
+    if (imgAlt || textLength < 100) {
+      return {
+        type: 'image-caption',
+        confidence: 0.8,
+        template: 'summary',
+        prefillFields: { 
+          title: document.title, 
+          summary: selectedText || imgAlt, 
+          originalText: selectedText,
+          imageUrl: (imageElement as HTMLImageElement).src
+        }
+      };
+    }
+  }
+  
+  // 12. 普通段落（优化：更智能的段落识别）
+  if (textLength > 20 && lineCount <= 10) { // 至少20字符，不超过10行
+    const isParagraph = !hasSpecialChars || (hasSpecialChars && textLength > 100); // 长文本即使有特殊字符也可能是段落
+    if (isParagraph) {
+      // 检查是否是结构化段落（如FAQ、步骤说明）
+      const isStructured = /(问|答|步骤|第\d+[步点]|Q\d+|A\d+)/i.test(selectedText);
+      return {
+        type: 'paragraph',
+        confidence: Math.min(0.75, 0.5 + Math.min(textLength / 200, 0.25)), // 根据长度动态调整
+        template: 'summary',
+        prefillFields: { 
+          title: document.title, 
+          summary: selectedText.substring(0, 200), 
+          originalText: selectedText,
+          isStructured
+        }
+      };
+    }
+  }
+  
+  // 13. 未知类型（但至少返回一个结果）
   return {
     type: 'unknown',
     confidence: 0.5,
@@ -179,83 +376,312 @@ function extractTableData(table: HTMLTableElement): { headers: string[], rows: s
   return { headers, rows };
 }
 
-// 第二层：识别网页类型 → 自动调整提取策略
+// 第二层：识别网页类型 → 自动调整提取策略（增强版：更深入的网址、内容、行为识别）
 function detectPageType(): PageTypeDetection {
   const hostname = window.location.hostname;
   const pathname = window.location.pathname;
+  const url = window.location.href;
+  const title = document.title.toLowerCase();
+  const metaDescription = document.querySelector('meta[name="description"]')?.getAttribute('content')?.toLowerCase() || '';
+  const ogType = document.querySelector('meta[property="og:type"]')?.getAttribute('content')?.toLowerCase() || '';
   
-  // GitHub仓库页
-  if (hostname.includes('github.com') && /\/[^\/]+\/[^\/]+$/.test(pathname)) {
-    return {
-      type: 'github-repo',
-      autoActions: [{ label: '📦 一键提取仓库信息', action: 'extract-github-repo', autoExecute: false }]
-    };
+  // 综合内容特征检测
+  const hasVideoPlayer = document.querySelector('video, iframe[src*="youtube"], iframe[src*="bilibili"], .video-player, [class*="video"]') !== null;
+  const hasProductInfo = document.querySelector('.price, [class*="price"], [class*="product"], [data-product-id], [itemprop="price"]') !== null;
+  const hasArticleContent = document.querySelector('article, .article, .post, .content, [role="article"]') !== null;
+  const hasCodeContent = document.querySelector('pre, code, .highlight, .code-block') !== null;
+  
+  // 1. GitHub相关页面（增强识别）
+  if (hostname.includes('github.com')) {
+    if (/\/[^\/]+\/[^\/]+$/.test(pathname) && !pathname.includes('/issues') && !pathname.includes('/pull')) {
+      return {
+        type: 'github-repo',
+        autoActions: [{ label: '一键提取仓库信息', action: 'extract-github-repo', autoExecute: false, icon: 'package' }]
+      };
+    }
+    if (pathname.includes('/blob/') || pathname.includes('/tree/')) {
+      return { type: 'github-code', autoActions: [{ label: '提取代码文件', action: 'extract-code', autoExecute: false, icon: 'code' }] };
+    }
+    if (pathname.includes('/issues/') || pathname.includes('/pull/')) {
+      return { type: 'github-issue', autoActions: [{ label: '提取Issue/PR信息', action: 'extract-issue', autoExecute: false, icon: 'bug' }] };
+    }
   }
   
-  // 技术文档
-  if (hostname.includes('docs.') || pathname.includes('/documentation/') || pathname.includes('/api/')) {
-    return { type: 'tech-doc', autoActions: [{ label: '📚 文档提取模式', action: 'doc-extract-mode', autoExecute: true }] };
+  // 2. 技术文档平台（增强识别）
+  const techDocPatterns = [
+    /docs?\./i, /documentation/i, /api/i, /guide/i, /tutorial/i,
+    /developer\./i, /dev\./i, /learn\./i, /reference/i
+  ];
+  const isTechDoc = techDocPatterns.some(pattern => 
+    pattern.test(hostname) || pattern.test(pathname) || pattern.test(title)
+  );
+  if (isTechDoc || hasCodeContent) {
+    return { type: 'tech-doc', autoActions: [{ label: '文档提取模式', action: 'doc-extract-mode', autoExecute: true, icon: 'book' }] };
   }
   
-  // Stack Overflow
-  if (hostname.includes('stackoverflow.com') && pathname.includes('/questions/')) {
-    return { type: 'stackoverflow', autoActions: [{ label: '💡 提取问题+最佳答案', action: 'extract-so-qa', autoExecute: false }] };
+  // 3. 问答社区（增强识别）
+  const qaDomains = ['stackoverflow.com', 'zhihu.com', 'segmentfault.com', 'juejin.cn', 'csdn.net'];
+  const isQAPage = qaDomains.some(domain => hostname.includes(domain)) || 
+                   pathname.includes('/questions/') || pathname.includes('/question/') ||
+                   pathname.includes('/answer/') || document.querySelector('.question, .answer, [class*="question"]') !== null;
+  if (isQAPage) {
+    return { type: 'stackoverflow', autoActions: [{ label: '提取问题+最佳答案', action: 'extract-so-qa', autoExecute: false, icon: 'lightbulb' }] };
   }
   
-  // 电商商品页
-  if ((hostname.includes('taobao.com') || hostname.includes('jd.com') || hostname.includes('pdd.com')) &&
-      document.querySelector('.price, [class*="price"], [class*="product"]')) {
-    return { type: 'ecommerce-product', autoActions: [{ label: '🛍️ 提取商品信息', action: 'extract-product-info', autoExecute: false }] };
+  // 4. 电商平台（增强识别）
+  const ecommerceDomains = ['taobao.com', 'tmall.com', 'jd.com', 'pdd.com', 'amazon.com', 'amazon.cn', 
+                            '1688.com', 'suning.com', 'gome.com.cn', 'dangdang.com'];
+  const isEcommerce = ecommerceDomains.some(domain => hostname.includes(domain)) ||
+                     hasProductInfo ||
+                     ogType === 'product' ||
+                     document.querySelector('[itemtype*="Product"], [itemprop="product"]') !== null;
+  if (isEcommerce) {
+    return { type: 'ecommerce-product', autoActions: [{ label: '提取商品信息', action: 'extract-product-info', autoExecute: false, icon: 'shopping-bag' }] };
   }
   
-  // 微信公众号文章
-  if (hostname.includes('mp.weixin.qq.com')) {
-    return { type: 'wechat-article', autoActions: [{ label: '📰 提取文章信息', action: 'extract-wechat-article', autoExecute: false }] };
+  // 5. 视频平台（增强识别）
+  const videoDomains = ['bilibili.com', 'youtube.com', 'youku.com', 'iqiyi.com', 'v.qq.com', 'acfun.cn', 
+                        'douyin.com', 'kuaishou.com', 'tiktok.com'];
+  const isVideoPage = videoDomains.some(domain => hostname.includes(domain)) ||
+                     pathname.includes('/video/') || pathname.includes('/watch') ||
+                     hasVideoPlayer ||
+                     ogType === 'video.movie' || ogType === 'video.episode';
+  if (isVideoPage) {
+    return { type: 'bilibili-video', autoActions: [{ label: '提取视频信息', action: 'extract-bilibili-video', autoExecute: false, icon: 'video' }] };
   }
   
-  // B站视频
-  if (hostname.includes('bilibili.com') && pathname.includes('/video/')) {
-    return { type: 'bilibili-video', autoActions: [{ label: '🎬 提取视频信息', action: 'extract-bilibili-video', autoExecute: false }] };
+  // 6. 文章/博客平台（增强识别）
+  const articleDomains = ['mp.weixin.qq.com', 'jianshu.com', 'cnblogs.com', 'oschina.net', 'infoq.cn',
+                         'medium.com', 'dev.to', 'hashnode.com'];
+  const isArticle = articleDomains.some(domain => hostname.includes(domain)) ||
+                   hasArticleContent ||
+                   ogType === 'article' ||
+                   document.querySelector('[itemtype*="Article"], [itemprop="articleBody"]') !== null ||
+                   (metaDescription && (metaDescription.includes('文章') || metaDescription.includes('blog')));
+  if (isArticle) {
+    return { type: 'wechat-article', autoActions: [{ label: '提取文章信息', action: 'extract-wechat-article', autoExecute: false, icon: 'newspaper' }] };
+  }
+  
+  // 7. 音乐平台（新增）
+  const musicDomains = ['y.qq.com', 'music.163.com', 'kugou.com', 'kuwo.cn', 'spotify.com', 'music.apple.com'];
+  if (musicDomains.some(domain => hostname.includes(domain)) || 
+      pathname.includes('/song/') || pathname.includes('/album/') || pathname.includes('/playlist/')) {
+    return { type: 'music', autoActions: [{ label: '提取音乐信息', action: 'extract-music', autoExecute: false, icon: 'music' }] };
+  }
+  
+  // 8. 新闻平台（新增）
+  const newsDomains = ['news.qq.com', 'news.sina.com.cn', 'news.163.com', 'xinhuanet.com', 'people.com.cn'];
+  if (newsDomains.some(domain => hostname.includes(domain)) || ogType === 'article' && title.includes('新闻')) {
+    return { type: 'news', autoActions: [{ label: '提取新闻信息', action: 'extract-news', autoExecute: false, icon: 'newspaper' }] };
+  }
+  
+  // 9. 社交媒体（新增）
+  if (hostname.includes('weibo.com') || hostname.includes('twitter.com') || hostname.includes('x.com')) {
+    return { type: 'social-media', autoActions: [{ label: '提取动态信息', action: 'extract-post', autoExecute: false, icon: 'sparkles' }] };
+  }
+  
+  // 10. 知识库/Wiki（新增）
+  if (hostname.includes('wiki') || pathname.includes('/wiki/') || document.querySelector('.wiki, [class*="wiki"]') !== null) {
+    return { type: 'wiki', autoActions: [{ label: '提取Wiki内容', action: 'extract-wiki', autoExecute: false, icon: 'book' }] };
   }
   
   return { type: 'general', autoActions: [] };
 }
 
-// 第三层：识别用户行为意图
+// 第三层：识别用户行为意图（增强版：更深入的行为分析）
 function detectUserIntent(): UserIntentDetection {
-  const recentActions = userBehaviorHistory.slice(-5);
+  const recentActions = userBehaviorHistory.slice(-20); // 扩大历史记录范围到20条
   const currentUrl = window.location.href;
+  const now = Date.now();
   
-  // 连续选中多段内容 → 想合并剪藏
+  // 计算行为统计
   const recentSelects = recentActions.filter(a => a.action === 'select' && a.url === currentUrl);
-  if (recentSelects.length >= 2) {
-    return { intent: 'merge', confidence: 0.9, suggestedAction: '显示"追加到当前剪藏"按钮' };
-  }
-  
-  // 同一网站连续剪藏多次 → 批量收集
   const recentClips = recentActions.filter(a => a.action === 'clip');
-  const sameSiteClips = recentClips.filter(a => {
-    try { return new URL(a.url).hostname === new URL(currentUrl).hostname; } catch { return false; }
-  });
-  if (sameSiteClips.length >= 3) {
-    return { intent: 'batch-collect', confidence: 0.85, suggestedAction: '提示"是否开启批量模式？"' };
+  const recentHighlights = recentActions.filter(a => a.action === 'highlight');
+  
+  // 1. 连续选中多段内容 → 想合并剪藏（增强版：更精确的时间分析）
+  if (recentSelects.length >= 2) {
+    const timeGaps: number[] = [];
+    for (let i = 1; i < recentSelects.length; i++) {
+      timeGaps.push(recentSelects[i].timestamp - recentSelects[i-1].timestamp);
+    }
+    const avgGap = timeGaps.reduce((a, b) => a + b, 0) / timeGaps.length;
+    const minGap = Math.min(...timeGaps);
+    const maxGap = Math.max(...timeGaps);
+    
+    // 多维度判断：时间间隔、选择数量、选择位置
+    let confidence = 0.7;
+    if (avgGap < 3000) confidence = 0.95; // 3秒内多次选择
+    else if (avgGap < 5000) confidence = 0.85; // 5秒内
+    else if (avgGap < 10000) confidence = 0.75; // 10秒内
+    
+    // 如果选择间隔很稳定，更可能是合并意图
+    if (maxGap - minGap < 2000 && recentSelects.length >= 3) {
+      confidence = Math.min(0.98, confidence + 0.1);
+    }
+    
+    // 检查选择内容是否相关（通过关键词重叠）
+    if (recentSelects.length >= 2) {
+      const texts = recentSelects.map(a => a.selectionText?.toLowerCase() || '').filter(t => t.length > 0);
+      if (texts.length >= 2) {
+        const commonWords = new Set<string>();
+        texts[0].split(/\s+/).forEach(word => {
+          if (word.length > 2 && texts.slice(1).every(t => t.includes(word))) {
+            commonWords.add(word);
+          }
+        });
+        if (commonWords.size >= 2) {
+          confidence = Math.min(0.98, confidence + 0.1); // 有共同关键词，提高置信度
+        }
+      }
+    }
+    
+    return { intent: 'merge', confidence, suggestedAction: '显示"追加到当前剪藏"按钮' };
   }
   
-  // 同一页面反复选择不同区域 → 在做对比
-  const selectionsOnPage = recentActions.filter(a => a.action === 'select' && a.url === currentUrl);
-  if (selectionsOnPage.length >= 3) {
-    const hasCompareKeywords = selectionsOnPage.some(a => 
-      a.selectionText && /优点|缺点|对比|比较|vs|versus/i.test(a.selectionText)
-    );
-    if (hasCompareKeywords) {
-      return { intent: 'compare', confidence: 0.8, suggestedAction: '提示"是否创建对比表格？"' };
+  // 2. 同一网站连续剪藏多次 → 批量收集（增强版：更智能的网站识别）
+  const sameSiteClips = recentClips.filter(a => {
+    try { 
+      const aHost = new URL(a.url).hostname.replace(/^www\./, '');
+      const currentHost = new URL(currentUrl).hostname.replace(/^www\./, '');
+      return aHost === currentHost;
+    } catch { return false; }
+  });
+  
+  if (sameSiteClips.length >= 2) {
+    const clipTimes = sameSiteClips.map(a => a.timestamp).sort((a, b) => a - b);
+    const timeSpan = clipTimes[clipTimes.length - 1] - clipTimes[0];
+    
+    let confidence = 0.7;
+    if (timeSpan < 30000) confidence = 0.95; // 30秒内
+    else if (timeSpan < 60000) confidence = 0.9; // 1分钟内
+    else if (timeSpan < 300000) confidence = 0.8; // 5分钟内
+    else confidence = 0.7;
+    
+    // 如果剪藏的是相似路径（如文章列表），置信度更高
+    const paths = sameSiteClips.map(a => {
+      try { return new URL(a.url).pathname; } catch { return ''; }
+    });
+    const pathPattern = paths[0]?.match(/^\/[^\/]+\//)?.[0];
+    if (pathPattern && paths.every(p => p.startsWith(pathPattern))) {
+      confidence = Math.min(0.98, confidence + 0.1);
+    }
+    
+    if (sameSiteClips.length >= 3) {
+      return { intent: 'batch-collect', confidence, suggestedAction: '提示"是否开启批量模式？"' };
     }
   }
   
-  // 选中内容后没有立即剪藏 → 可能在犹豫/想继续选
+  // 3. 同一页面反复选择不同区域 → 在做对比（增强版：更精确的对比识别）
+  if (recentSelects.length >= 3) {
+    const compareKeywords = /(优点|缺点|对比|比较|vs|versus|差异|不同|相同|相似|优劣|好坏|哪个|选择|推荐)/i;
+    const hasCompareKeywords = recentSelects.some(a => 
+      a.selectionText && compareKeywords.test(a.selectionText)
+    );
+    
+    // 检查选择内容长度：对比通常选择相似长度的内容
+    const textLengths = recentSelects.map(a => a.selectionText?.length || 0).filter(l => l > 0);
+    const lengthVariance = textLengths.length > 1 ? 
+      Math.max(...textLengths) / Math.min(...textLengths) : 1;
+    const isSimilarLength = lengthVariance < 2.5; // 长度差异小于2.5倍
+    
+    // 检查选择位置：对比通常选择相邻区域
+    const selectionRects = recentSelects.map(a => {
+      const range = window.getSelection()?.getRangeAt(0);
+      return range?.getBoundingClientRect();
+    }).filter(r => r !== undefined);
+    
+    let isAdjacent = false;
+    if (selectionRects.length >= 2) {
+      const distances = [];
+      for (let i = 1; i < selectionRects.length; i++) {
+        const prev = selectionRects[i-1];
+        const curr = selectionRects[i];
+        if (prev && curr) {
+          const distance = Math.abs(curr.top - (prev.top + prev.height));
+          distances.push(distance);
+        }
+      }
+      isAdjacent = distances.every(d => d < 200); // 相邻区域距离小于200px
+    }
+    
+    if (hasCompareKeywords || (isSimilarLength && recentSelects.length >= 3) || isAdjacent) {
+      const confidence = hasCompareKeywords ? 0.95 : (isAdjacent ? 0.85 : 0.75);
+      return { intent: 'compare', confidence, suggestedAction: '提示"是否创建对比表格？"' };
+    }
+  }
+  
+  // 4. 选中内容后没有立即剪藏 → 可能在犹豫/想继续选（增强版：更细致的时间分析）
   const lastSelect = recentActions.find(a => a.action === 'select');
-  if (lastSelect && Date.now() - lastSelect.timestamp > 2000 && Date.now() - lastSelect.timestamp < 10000) {
-    return { intent: 'continue-selecting', confidence: 0.7, suggestedAction: '保持选区高亮，等待追加' };
+  if (lastSelect) {
+    const timeSinceSelect = now - lastSelect.timestamp;
+    const selectionLength = lastSelect.selectionText?.length || 0;
+    
+    // 2-5秒：可能在思考
+    if (timeSinceSelect > 2000 && timeSinceSelect < 5000) {
+      const isShortSelection = selectionLength < 50;
+      return { 
+        intent: 'continue-selecting', 
+        confidence: isShortSelection ? 0.85 : 0.65, 
+        suggestedAction: '保持选区高亮，可继续追加选择' 
+      };
+    }
+    
+    // 5-10秒：可能在继续选择或犹豫
+    if (timeSinceSelect > 5000 && timeSinceSelect < 10000) {
+      // 如果选择很短且没有后续操作，更可能是想继续选择
+      if (selectionLength < 30 && recentActions.filter(a => a.timestamp > lastSelect.timestamp && a.action !== 'select').length === 0) {
+        return { 
+          intent: 'continue-selecting', 
+          confidence: 0.75, 
+          suggestedAction: '保持选区高亮，可继续追加选择' 
+        };
+      }
+    }
+    
+    // 超过10秒未操作：可能已完成任务或放弃
+    if (timeSinceSelect > 10000) {
+      const hasClipAfter = recentActions.some(a => a.timestamp > lastSelect.timestamp && a.action === 'clip');
+      if (!hasClipAfter) {
+        return { intent: 'task-complete', confidence: 0.7, suggestedAction: '提示"是否已完成剪藏？"' };
+      }
+    }
+  }
+  
+  // 5. 检测快速连续操作模式（增强版：更精确的快速操作识别）
+  const rapidActions = recentActions.filter(a => now - a.timestamp < 3000);
+  if (rapidActions.length >= 3) {
+    const allSelects = rapidActions.every(a => a.action === 'select');
+    const selectClipPattern = rapidActions.some((a, i) => 
+      i > 0 && a.action === 'clip' && rapidActions[i-1].action === 'select'
+    );
+    
+    if (allSelects) {
+      return { intent: 'merge', confidence: 0.9, suggestedAction: '检测到快速多选，建议合并剪藏' };
+    }
+    if (selectClipPattern && rapidActions.length >= 4) {
+      return { intent: 'batch-collect', confidence: 0.85, suggestedAction: '检测到快速剪藏模式' };
+    }
+  }
+  
+  // 6. 检测高亮模式（新增：用户频繁高亮可能是想标记重点）
+  if (recentHighlights.length >= 3) {
+    const highlightTimes = recentHighlights.map(a => a.timestamp).sort((a, b) => a - b);
+    const timeSpan = highlightTimes[highlightTimes.length - 1] - highlightTimes[0];
+    if (timeSpan < 60000) { // 1分钟内多次高亮
+      return { intent: 'highlight-focus', confidence: 0.8, suggestedAction: '检测到频繁高亮，建议提取高亮内容' };
+    }
+  }
+  
+  // 7. 检测阅读模式（新增：长时间停留但无操作）
+  const pageLoadTime = recentActions.find(a => a.url === currentUrl)?.timestamp || now;
+  const timeOnPage = now - pageLoadTime;
+  if (timeOnPage > 60000 && recentActions.filter(a => a.url === currentUrl && a.action === 'clip').length === 0) {
+    // 页面停留超过1分钟但未剪藏，可能是深度阅读
+    const hasScroll = window.scrollY > window.innerHeight;
+    if (hasScroll) {
+      return { intent: 'deep-reading', confidence: 0.6, suggestedAction: '检测到深度阅读，建议提取全文' };
+    }
   }
   
   return { intent: 'unknown', confidence: 0 };
@@ -393,16 +819,16 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
   // 优先显示内容类型识别结果（降低阈值，让更多内容能被识别）
   if (contentType && contentType.confidence > 0.5) {
     const templateMap: Record<string, {label: string; icon: string}> = {
-      'code': { label: `检测到代码片段，推荐使用代码模板`, icon: '💻' },
-      'table': { label: `检测到表格数据，推荐使用表格模板`, icon: '📊' },
-      'api-doc': { label: `检测到API文档，推荐使用API文档模板`, icon: '📡' },
-      'product': { label: `检测到商品信息，推荐使用电商模板`, icon: '🛍️' },
-      'contact': { label: `检测到联系方式，推荐使用联系人模板`, icon: '📞' },
-      'paragraph': { label: `检测到普通段落，推荐使用摘要模板`, icon: '📄' },
-      'unknown': { label: `智能推荐模板`, icon: '✨' }
+      'code': { label: `检测到代码片段，推荐使用代码模板`, icon: 'code' },
+      'table': { label: `检测到表格数据，推荐使用表格模板`, icon: 'file-text' },
+      'api-doc': { label: `检测到API文档，推荐使用API文档模板`, icon: 'link' },
+      'product': { label: `检测到商品信息，推荐使用电商模板`, icon: 'shopping-bag' },
+      'contact': { label: `检测到联系方式，推荐使用联系人模板`, icon: 'link' },
+      'paragraph': { label: `检测到普通段落，推荐使用摘要模板`, icon: 'file-text' },
+      'unknown': { label: `智能推荐模板`, icon: 'sparkles' }
     };
     
-    const templateInfo = templateMap[contentType.type] || { label: '智能推荐模板', icon: '✨' };
+    const templateInfo = templateMap[contentType.type] || { label: '智能推荐模板', icon: 'sparkles' };
     suggestions.push({
       label: templateInfo.label,
       action: `use-template-${contentType.template || 'summary'}`,
@@ -417,7 +843,7 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
       suggestions.push({
         label: action.label,
         action: action.action,
-        icon: action.label.match(/[📦📚💡🛍️📰🎬]/)?.[0] || '✨',
+        icon: action.icon || 'sparkles',
         autoExecute: action.autoExecute
       });
     });
@@ -426,10 +852,10 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
   // 显示用户行为意图建议（降低阈值）
   if (userIntent && userIntent.confidence > 0.5) {
     const intentMap: Record<string, {label: string; icon: string}> = {
-      'merge': { label: '检测到您在做多选，是否合并剪藏？', icon: '🔗' },
-      'batch-collect': { label: '检测到批量收集，是否开启批量模式？', icon: '📦' },
-      'compare': { label: '检测到对比信息，是否创建对比表格？', icon: '📊' },
-      'continue-selecting': { label: '保持选区高亮，可继续追加选择', icon: '➕' }
+      'merge': { label: '检测到您在做多选，是否合并剪藏？', icon: 'merge' },
+      'batch-collect': { label: '检测到批量收集，是否开启批量模式？', icon: 'batch' },
+      'compare': { label: '检测到对比信息，是否创建对比表格？', icon: 'compare' },
+      'continue-selecting': { label: '保持选区高亮，可继续追加选择', icon: 'highlighter' }
     };
     
     const intentInfo = intentMap[userIntent.intent];
@@ -447,9 +873,9 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
   if (suggestions.length === 0) {
     // 即使没有识别到特定类型，也显示一个通用建议
     suggestions.push({
-      label: '💡 智能剪藏建议',
+      label: '智能剪藏建议',
       action: 'smart-clip',
-      icon: '✨',
+      icon: 'sparkles',
       autoExecute: false
     });
   }
@@ -462,13 +888,13 @@ function createContextAwarePanel(rect: DOMRect, selection?: Selection, range?: R
   
   panel.innerHTML = `
     <div class="sc-context-header">
-      <span class="sc-context-title">🤖 智能识别</span>
+      <span class="sc-context-title">智能识别</span>
       <button class="sc-context-close" title="关闭">×</button>
     </div>
     <div class="sc-context-suggestions">
       ${suggestions.map(s => `
         <div class="sc-context-item" data-action="${s.action}" data-auto="${s.autoExecute ? 'true' : 'false'}">
-          <span class="sc-context-icon">${s.icon}</span>
+          <span class="sc-context-icon">${getIconHTML(s.icon, 18)}</span>
           <span class="sc-context-label">${s.label}</span>
           ${s.autoExecute ? '<span class="sc-auto-badge">自动</span>' : ''}
         </div>
@@ -875,6 +1301,68 @@ function extractMusicContent(): string | null {
   return null;
 }
 
+//  [新] 纯前端 HTML -> Markdown 转换器
+// 专门用于技术文档，保留代码块、标题和链接
+function htmlToMarkdown(root: Element): string {
+  // 1. 克隆节点，避免修改原页面
+  const clone = root.cloneNode(true) as HTMLElement;
+
+  // 🧹 增强清洗规则：移除更多干扰元素
+  const removeSelectors = [
+    'script', 'style', 'iframe', 'svg', 'noscript', 
+    'nav', 'footer', 'header', 
+    '.sidebar', '.aside', '.ad', '.comment', 
+    '.nav-list', '.menu', '.toc', // 移除目录和菜单
+    '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]' // ARIA 角色
+  ];
+  removeSelectors.forEach(sel => {
+    clone.querySelectorAll(sel).forEach(el => el.remove());
+  });
+
+  // 3. 处理代码块 (Tech Doc 核心!)
+  // 把 <pre><code>...</code></pre> 替换为 ```\n...\n```
+  clone.querySelectorAll('pre').forEach(pre => {
+    const code = pre.innerText; // 获取纯文本代码
+    // 简单的替换逻辑，避免破坏 DOM 结构
+    pre.replaceWith(`\n\n\`\`\`\n${code}\n\`\`\`\n\n`);
+  });
+
+  // 4. 处理标题 (保留层级)
+  ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].forEach((tag, index) => {
+    clone.querySelectorAll(tag).forEach(header => {
+      const prefix = '#'.repeat(index + 1);
+      header.replaceWith(`\n\n${prefix} ${header.textContent}\n\n`);
+    });
+  });
+
+  // 5. 处理链接
+  clone.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href');
+    const text = a.textContent?.trim();
+    if (href && text && !href.startsWith('javascript:')) {
+      a.replaceWith(`[${text}](${href})`);
+    }
+  });
+
+  // 6. 处理列表
+  clone.querySelectorAll('li').forEach(li => {
+    li.replaceWith(`\n- ${li.textContent}`);
+  });
+
+  // 7. 处理图片
+  clone.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src');
+    const alt = img.getAttribute('alt') || 'image';
+    if (src) img.replaceWith(`\n![${alt}](${src})\n`);
+  });
+
+  // 8. 获取最终文本并清理多余换行
+  let text = clone.innerText || clone.textContent || '';
+  // 将连续的3个以上换行压缩为2个
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+
 
 function extractUniversalContent(): ClipContentPayload {
 
@@ -890,72 +1378,63 @@ const musicContent = extractMusicContent();
   }
   
   //==================================通用逻辑======================================================
+  // const url = window.location.href;
+  // const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
+  // const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
+  // const image = getMetaContent(['meta[property="og:image"]', 'meta[name="twitter:image"]', 'link[rel="image_src"]']);
+  // const ogType = getMetaContent(['meta[property="og:type"]']);
+  // const isVideo = ogType.includes('video') || url.includes('bilibili.com/video') || url.includes('youtube.com/watch');
+  // const meta = getPageMeta();
+  
+  // return {
+  //   text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${resolveUrl(image)})` : ''}`,
+  //   sourceUrl: url,
+  //   meta: meta
+  // };
+
+  // =================================================================================
+  //  通用逻辑 (升级版：支持抓取正文 HTML)
+  // =================================================================================
+  
   const url = window.location.href;
-  const title = getMetaContent(['meta[property="og:title"]', 'meta[name="twitter:title"]', 'meta[name="title"]', 'title']) || '未命名网页';
-  const desc = getMetaContent(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '暂无简介';
-  const image = getMetaContent(['meta[property="og:image"]', 'meta[name="twitter:image"]', 'link[rel="image_src"]']);
-  const ogType = getMetaContent(['meta[property="og:type"]']);
-  const isVideo = ogType.includes('video') || url.includes('bilibili.com/video') || url.includes('youtube.com/watch');
+  const title = document.title;
   const meta = getPageMeta();
   
+  // 核心升级：智能寻找网页正文区域
+  // 技术文档、博客通常放在 main, article 或特定的 class 里
+  const contentNode = document.querySelector('main') 
+    || document.querySelector('article') 
+    || document.querySelector('.markdown-body')       // GitHub README
+    || document.querySelector('.documentation-content') // 很多文档站
+    || document.querySelector('.doc-content')
+    || document.querySelector('#content') 
+    || document.body; // 实在找不到就抓整个 body (保底)
+
+ // [关键] 在前端把 HTML 转成 Markdown 字符串
+  console.log('正在前端执行 Markdown 转换...');
+  const markdownText = htmlToMarkdown(contentNode);
+
+  // 组装数据
+  // 我们给它加个头，告诉 AI 这是什么
+  const finalContent = `
+# ${title}
+> 来源：${url}
+> 简介：${meta.description || '暂无'}
+
+---
+${markdownText}
+  `;
+  
   return {
-    text: `【${isVideo ? '视频' : '网页'}智能剪藏】\n标题：${title}\n链接：${url}\n\n${desc ? `简介：${desc}` : ''}\n${image ? `\n![封面图](${resolveUrl(image)})` : ''}`,
+    text: finalContent, // 现在发给后端的是干净的 Markdown 文本！
     sourceUrl: url,
     meta: meta
   };
+
+
+
+
 }
-
-
-//////////////////////// qq 音乐专用提取器 (zyy)/////////////////////////////////////
-// function extractQQMusic(): string | null {
-//   if (!window.location.hostname.includes('y.qq.com')) return null;// 仅在 QQ 音乐域名下运行
-  
-//   console.log('🎵 检测到 QQ 音乐，正在执行专用提取...');
-//   // 核心：直接找歌单列表的行
-//   // QQ音乐网页版的典型 class 是 .songlist__list li 或 .songlist__item
-//   const rows = document.querySelectorAll('.songlist__list li, .songlist__item');
-  
-//   if (rows.length === 0) return null;
-
-//   // 我们在前端直接把数据整理成 Markdown 格式发给后端,后端 AI 只需要做“格式化”
-//   let md = `### 歌单元数据\n\n`;
-  
-//   // 提取封面
-//   const coverImg = document.querySelector('.data__photo') as HTMLImageElement;
-//   if (coverImg) md += `![Cover](${coverImg.src})\n\n`;
-
-//   // 提取简介
-//   const desc = document.querySelector('.data__cont') || document.querySelector('.js_desc_content');
-//   if (desc) md += `> 简介：${desc.textContent?.trim().slice(0, 300)}...\n\n`;
-
-//   // 构建表格
-//   md += `### 播放列表\n| 歌名 | 歌手 | 专辑 | 时长 |\n|---|---|---|---|\n`;
-
-//   rows.forEach((row) => {
-//     // 歌名
-//     const nameEl = row.querySelector('.songlist__songname_txt a') as HTMLAnchorElement;
-//     const name = nameEl ? nameEl.textContent?.trim() : 'N/A';
-//     const link = nameEl ? nameEl.href : '';
-
-//     // 歌手 (可能有多个)
-//     const artistEls = row.querySelectorAll('.songlist__artist a');
-//     const artist = Array.from(artistEls).map(el => el.textContent).join(', ') || 'N/A';
-    
-//     // 专辑
-//     const albumEl = row.querySelector('.songlist__album a');
-//     const album = albumEl ? albumEl.textContent?.trim() : 'N/A';
-    
-//     // 时长
-//     const timeEl = row.querySelector('.songlist__time');
-//     const time = timeEl ? timeEl.textContent?.trim() : 'N/A';
-
-//     // 拼接到 Markdown
-//     md += `| [${name}](${link}) | ${artist} | ${album} | ${time} |\n`;
-//   });
-
-//   return md;
-// }
-
 
 
 
@@ -2171,14 +2650,14 @@ function convertToClipPayload(data: SelectionData | PageData): ClipContentPayloa
   
   // 添加图片信息 - 增强展示
   if (data.images && data.images.length > 0) {
-    markdownText += `\n\n## 📷 图片 (${data.images.length}张)\n\n`;
+    markdownText += `\n\n## 图片 (${data.images.length}张)\n\n`;
     data.images.slice(0, 10).forEach((img, idx) => {
       markdownText += `${idx + 1}. ![${img.alt || '图片'}](${img.src})\n`;
     });
   }
 
   if (data.links && data.links.length > 0) {
-    markdownText += `\n\n## 🔗 链接 (${data.links.length}个)\n\n`;
+    markdownText += `\n\n## 链接 (${data.links.length}个)\n\n`;
     data.links.slice(0, 15).forEach((link) => {
       markdownText += `- [${link.text || link.href}](${link.href})\n`;
     });
