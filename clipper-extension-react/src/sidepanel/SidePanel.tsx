@@ -974,7 +974,18 @@ useEffect(() => {
       const templateIdToUse = message.templateId;
 
       // 根据 ID 去配置里查表
-      const tableId = userConfig?.tables[templateIdToUse] || userConfig?.tables['default'];
+      // 🟢 修复：如果配置中没有 tech-doc 的映射（旧配置），则尝试使用 default，但最好提示用户更新
+      let tableId = userConfig?.tables[templateIdToUse];
+      
+      if (!tableId) {
+        console.warn(`⚠️ 未找到模板 [${templateIdToUse}] 的表格映射，尝试使用默认表`);
+        // 如果是 tech-doc 且没有映射，可能是旧配置，尝试查找 tech-docs (旧名) 或 default
+        if (templateIdToUse === 'tech-doc') {
+           tableId = userConfig?.tables['tech-docs'] || userConfig?.tables['default'];
+        } else {
+           tableId = userConfig?.tables['default'];
+        }
+      }
 
       console.log(`🚀 单条消息导出调试: 模板[${templateIdToUse}] -> 表格[${tableId}]`);
 
@@ -1299,7 +1310,7 @@ useEffect(() => {
       {clipLinks.length > 0 && (
         <>
           <div className="section-title">
-            <span>🔗 链接 ({clipLinks.length}个)</span>
+            <span>链接 ({clipLinks.length}个)</span>
             <button 
               className="export-excel-btn"
               onClick={() => {
@@ -1398,7 +1409,7 @@ useEffect(() => {
       {clipImages.length > 0 && (
         <>
           <div className="section-title">
-            <span>📷 图片 ({clipImages.length}张)</span>
+            <span>图片 ({clipImages.length}张)</span>
             <button 
               className="download-all-btn"
               onClick={async () => {

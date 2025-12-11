@@ -47,6 +47,18 @@ const FIELDS_MUSIC = [
 ];
 
 //技术文档表 (新增)
+const FIELDS_TECH_DOC = [
+  { field_name: "标题", type: 1 },
+  { field_name: "描述", type: 1 },
+  { field_name: "参数列表", type: 1 }, // 文本类型，存储格式化后的参数
+  { field_name: "返回值", type: 1 },
+  { field_name: "示例代码", type: 1 },
+  { field_name: "核心要点", type: 1 },
+  { field_name: "相关链接", type: 1 }, // 文本类型，存储 Title | URL
+  { field_name: "标签", type: 1 },
+  { field_name: "个人感想", type: 1 },
+  { field_name: "原文链接", type: 15 }
+];
 
 
 // 映射关系
@@ -54,7 +66,7 @@ const TABLES_CONFIG = [
   { key: 'summary', name: 'AI剪藏-摘要', fields: FIELDS_SUMMARY },
   { key: 'video-summary', name: 'AI剪藏-视频', fields: FIELDS_VIDEO },
   { key: 'music-collection', name: 'AI剪藏-音乐', fields: FIELDS_MUSIC } ,//新
-  { key: 'tech-docs', name: 'AI剪藏-技术文档', fields: FIELDS_SUMMARY}// 新
+  { key: 'tech-doc', name: 'AI剪藏-技术文档', fields: FIELDS_TECH_DOC}// 新
 ];
 
 
@@ -364,6 +376,43 @@ async function addSingleRecord(data: any, options: SaveOptions) {
     console.log(`✨ 检测到 ${data.highlights.length} 处高亮`);
     // 使用 ||| 分隔符连接所有高亮文本
     candidateFields["高亮内容"] = data.highlights.map((h: any) => h.text).join('|||');
+  }
+
+  // 🟢 技术文档字段处理
+  if (data.description) candidateFields["描述"] = data.description;
+  
+  if (data.parameters && Array.isArray(data.parameters) && data.parameters.length > 0) {
+    // 格式化参数列表: name (type): description [Required/Optional]
+    candidateFields["参数列表"] = data.parameters.map((p: any) => {
+      const req = p.required ? "[必填]" : "[可选]";
+      const def = p.default ? ` (默认: ${p.default})` : "";
+      return `- ${p.name} (${p.type}) ${req}${def}: ${p.description || p.desc || ''}`;
+    }).join('\n');
+  }
+
+  if (data.returns) candidateFields["返回值"] = data.returns;
+
+  if (data.examples && Array.isArray(data.examples) && data.examples.length > 0) {
+    // 格式化示例代码
+    candidateFields["示例代码"] = data.examples.map((ex: any) => {
+      if (typeof ex === 'string') return ex;
+      const lang = ex.lang || 'text';
+      const code = ex.code || '';
+      return `\`\`\`${lang}\n${code}\n\`\`\``;
+    }).join('\n\n');
+  }
+
+  if (data.keyPoints && Array.isArray(data.keyPoints) && data.keyPoints.length > 0) {
+    candidateFields["核心要点"] = data.keyPoints.map((k: string) => `- ${k}`).join('\n');
+  }
+
+  if (data.relatedLinks && Array.isArray(data.relatedLinks) && data.relatedLinks.length > 0) {
+    candidateFields["相关链接"] = data.relatedLinks.map((l: any) => {
+      if (typeof l === 'string') return l;
+      const title = l.title || '链接';
+      const url = l.url || '';
+      return `${title} | ${url}`; 
+    }).join('\n');
   }
 
   // 3. 过滤字段

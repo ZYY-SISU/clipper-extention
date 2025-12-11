@@ -249,6 +249,14 @@ export interface UserConfig {
     default?: string;
   }
 
+  export interface TechDocExample {
+    code?: string;
+    lang?: string;
+  }
+  export interface TechDocRelatedLink {
+    url?: string;
+    title?: string;
+  }
   export interface TechDocType {
     title?: string;
     description?: string;
@@ -256,9 +264,9 @@ export interface UserConfig {
     mainSections?: string[];
     parameters: parameterType[];
     returns?: string;
-    examples?: string[];
+    examples?: (string | TechDocExample)[];
     keyPoints: string[];
-    relatedLinks?: string[];
+    relatedLinks?: (string | TechDocRelatedLink)[];
     tags?: string[];
     templateId?: string; // 🟢 新增这一行，? 表示它是可选的
     notes?: string;
