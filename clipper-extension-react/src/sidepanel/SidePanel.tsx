@@ -1256,7 +1256,7 @@ function SidePanel() {
       {clipLinks.length > 0 && (
         <>
           <div className="section-title">
-            <span>🔗 链接 ({clipLinks.length}个)</span>
+            <span>链接 ({clipLinks.length}个)</span>
             <button 
               className="export-excel-btn"
               onClick={() => {
@@ -1355,7 +1355,7 @@ function SidePanel() {
       {clipImages.length > 0 && (
         <>
           <div className="section-title">
-            <span>📷 图片 ({clipImages.length}张)</span>
+            <span>图片 ({clipImages.length}张)</span>
             <button 
               className="download-all-btn"
               onClick={async () => {
