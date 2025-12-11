@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import { CloudUpload, StickyNote } from 'lucide-react';
+import { CloudUpload, StickyNote, Copy, Check } from 'lucide-react';
 import type { TechDocType } from '../../types/index';
 
 // 定义技术文档结果的数据类型
@@ -33,6 +33,14 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
   messageIndex = 0
 }) => {
   console.log("被渲染的技术文档数据:", data);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopy = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
   // 提供默认值
   const docData = {
     title: data.title || '技术文档',
@@ -142,14 +150,26 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
         <div className="tech-doc-section">
           <h2 className="tech-doc-section-title">示例代码</h2>
           {docData.examples.map((example, index) => {
-            // 处理可能的对象结构 {lang, code}
-            const code = typeof example === 'object' && example !== null && 'code' in example ? example.code : example;
-            const lang = typeof example === 'object' && example !== null && 'lang' in example ? example.lang : 'javascript';
-            
+            let code: string = '';
+            let lang: string = 'javascript';
+            if (typeof example === 'object' && example !== null) {
+              code = 'code' in example && typeof example.code === 'string' ? example.code : '';
+              lang = 'lang' in example && typeof example.lang === 'string' ? example.lang : 'javascript';
+            } else {
+              code = String(example);
+            }
             return (
               <div key={index} className="tech-doc-example">
                 <div className="tech-doc-example-header">
                   <span className="tech-doc-example-lang">{lang}</span>
+                  <button 
+                    className="tech-doc-copy-btn"
+                    onClick={() => handleCopy(code, index)}
+                    title="复制"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666', display: 'flex', alignItems: 'center' }}
+                  >
+                    {copiedIndex === index ? <Check size={14} color="green" /> : <Copy size={14} />}
+                  </button>
                 </div>
                 <pre className="tech-doc-code-block">
                   <code className={`language-${lang}`}>
@@ -168,10 +188,15 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
           <h2 className="tech-doc-section-title">相关链接</h2>
           <ul className="tech-doc-related-links">
             {docData.relatedLinks.map((link, index) => {
-              // 处理可能的对象结构 {title, url}
-              const href = typeof link === 'object' && link !== null && 'url' in link ? link.url : link;
-              const linkText = typeof link === 'object' && link !== null && 'title' in link ? link.title : href;
-              
+              let href: string = '';
+              let linkText: string = '';
+              if (typeof link === 'object' && link !== null) {
+                href = 'url' in link && typeof link.url === 'string' ? link.url : '';
+                linkText = 'title' in link && typeof link.title === 'string' ? link.title : href;
+              } else {
+                href = String(link);
+                linkText = href;
+              }
               return (
                 <li key={index} className="tech-doc-related-link-item">
                   <a 
