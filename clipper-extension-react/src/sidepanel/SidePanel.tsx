@@ -7,7 +7,7 @@ import {
   Send, MessageSquare, ChevronDown, Check, Zap,
   Brain ,Globe, PlusCircle, Menu, X,
   CloudUpload, CheckCircle, Loader2, User, Settings,
-  Maximize2, Minimize2,// 新增这两个
+  Maximize2, Minimize2,// 👈 新增这两个
   Copy,
   Video, Trash2, Edit2, Sun, Moon, Music, StickyNote,
   Download, ChevronUp, FileSpreadsheet
@@ -17,7 +17,8 @@ import { ChatStorage } from '../utils/chatStorage';
 import type { ChatMessage, Conversation } from '../utils/chatStorage';
 import { TRANSLATIONS } from '../utils/translations';
 import './SidePanel.css';
-import CodeBlock from './components/CodeBlock'; //  引入刚才写好的组件
+import CodeBlock from './components/CodeBlock'; // 👈 引入刚才写好的组件
+import TechDocResult from './components/TechDocResult';
 
 const AI_MODELS = [
   { id: 'gpt-4o', name: 'GPT-4o', icon: Zap, color: '#10a37f', tag: 'strong' },
@@ -1573,104 +1574,69 @@ useEffect(() => {
         </div>
       )}
       {chatHistory.map((msg, i) => (
-  <div 
-    key={i} 
-    // 根据角色给外层容器不同的类名，控制对齐方向
-    className={msg.role === 'user' ? 'user-message-wrapper' : 'ai-message-wrapper'}
-  >
-    
-    {/* ======================= 🤖 AI 消息部分 ======================= */}
+  <div key={i} className={msg.role === 'user' ? 'user-message-wrapper' : 'ai-message-wrapper'}>
     {msg.role === 'ai' ? (
-      <>
-        {/* 1. 消息气泡主体 */}
-        <div className="message ai">
-          <div className="ai-message-container">
-          <ReactMarkdown
-            rehypePlugins={[rehypeRaw]}
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ node, inline, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                return !inline && match ? (
-                  <CodeBlock
-                    language={match[1]}
-                    value={String(children).replace(/\n$/, '')}
-                    theme={theme} // 🟢 关键：把当前的主题传进去
-                  />
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
-          >
-            {msg.text}
-          </ReactMarkdown>
-            
-            {/* 感想显示与编辑区域 */}
-            {msg.notes && (
-              <div className="note-display-area">
-                <div className="note-header">
-                  <div className="note-title">
-                    <StickyNote size={15} />
-                    <span>我的感想</span>
-                  </div>
-                  
-                  {/* 展开/收起按钮 (逻辑不变，样式更新) */}
-                  {msg.notes.length > 100 && (
-                    <button 
-                      className="note-toggle-btn"
-                      onClick={() => setExpandedNotes(prev => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(i)) newSet.delete(i);
-                        else newSet.add(i);
-                        return newSet;
-                      })} 
-                    >
-                      {expandedNotes.has(i) ? '收起' : '展开'}
-                    </button>
-                  )}
+      <div className="message ai">
+        <div className="ai-message-container">
+          {msg.templateId === 'tech-doc' && msg.structuredData ? (
+            <TechDocResult data={msg.structuredData as TechDocType} />
+          ) : (
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} theme={theme} />
+                  ) : (
+                    <code className={className} {...props}>{children}</code>
+                  );
+                }
+              }}
+            >
+              {msg.text}
+            </ReactMarkdown>
+          )}
+
+          {/* 感想显示与编辑区域 */}
+          {msg.notes && (
+            <div className="note-display-area">
+              <div className="note-header">
+                <div className="note-title">
+                  <StickyNote size={15} />
+                  <span>我的感想</span>
                 </div>
-                
-                {/* 内容区域 */}
-                <div className="note-content">
-                  {msg.notes.length > 100 && !expandedNotes.has(i) ? msg.notes.substring(0, 100) + '...' : msg.notes}
-                </div>
-              </div>
-            )}
-            {editingNoteIndex === i && (
-              <div className="note-editor-area">
-                {/* 输入框 (改为通透风格) */}
-                <textarea
-                  className="note-textarea"
-                  value={noteInput}
-                  onChange={(e) => setNoteInput(e.target.value)}
-                  placeholder="写下你对此刻的思考..." // 更有引导性的文案
-                  autoFocus // 自动聚焦
-                />
-                
-                {/* 底部按钮栏 (胶囊风格) */}
-                <div className="note-editor-actions">
-                  <button 
-                    className="note-action-btn note-btn-cancel"
-                    onClick={() => setEditingNoteIndex(null)} 
-                  >
-                    取消
+                {msg.notes.length > 100 && (
+                  <button className="note-toggle-btn" onClick={() => {
+                    setExpandedNotes(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(i)) newSet.delete(i);
+                      else newSet.add(i);
+                      return newSet;
+                    });
+                  }}>
+                    {expandedNotes.has(i) ? '收起' : '展开'}
                   </button>
-                  <button 
-                    className="note-action-btn note-btn-save"
-                    onClick={handleSaveNote} 
-                  >
-                    保存
-                  </button>
-                </div>
+                )}
               </div>
-            )}
-          </div>
+              <div className="note-content">
+                {msg.notes.length > 100 && !expandedNotes.has(i) ? msg.notes.substring(0, 100) + '...' : msg.notes}
+              </div>
+            </div>
+          )}
+          {editingNoteIndex === i && (
+            <div className="note-editor-area">
+              <textarea className="note-textarea" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="写下你的感想..." autoFocus />
+              <div className="note-editor-actions">
+                <button className="note-action-btn note-btn-cancel" onClick={() => setEditingNoteIndex(null)}>取消</button>
+                <button className="note-action-btn note-btn-save" onClick={handleSaveNote}>保存</button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 2. AI 底部悬浮操作栏 (移出气泡，独立显示) */}
+        {/* ✅ 统一底部操作栏，避免重复 */}
         <div className="ai-message-actions">
           {/* 复制 */}
           <button 
@@ -1702,10 +1668,9 @@ useEffect(() => {
             <StickyNote size={16} />
           </button>
         </div>
-      </>
+      </div>
     ) : (
-      
-      /* ======================= 👤 用户消息部分 ======================= */
+
       <>
         {/* 1. 用户消息气泡 */}
         <div className="message user">
@@ -1729,6 +1694,7 @@ useEffect(() => {
     )}
   </div>
 ))}
+
       
       {/* 导出成功弹窗 */}
       {singleExportStatus.status === 'success' && singleExportStatus.tableUrl && (

@@ -1,14 +1,12 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import { CloudUpload, StickyNote } from 'lucide-react';
 import type { TechDocType } from '../../types/index';
+import { StickyNote } from 'lucide-react';
 
 // 定义技术文档结果的数据类型
 interface TechDocResultProps {
   data: TechDocType;
-  onExport: () => void;
-  onAddNote: () => void;
   notes?: string;
   expandedNotes?: Set<number>;
   editingNoteIndex?: number | null;
@@ -21,8 +19,6 @@ interface TechDocResultProps {
 
 const TechDocResult: React.FC<TechDocResultProps> = ({
   data,
-  onExport,
-  onAddNote,
   notes,
   expandedNotes,
   editingNoteIndex,
@@ -32,7 +28,6 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
   onCancelNote,
   messageIndex = 0
 }) => {
-  console.log("被渲染的技术文档数据:", data);
   // 提供默认值
   const docData = {
     title: data.title || '技术文档',
@@ -46,6 +41,7 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
     relatedLinks: data.relatedLinks || [],
     tags: data.tags || []
   };
+
   return (
     <div className="tech-doc-result-container">
       {/* 文档标题和描述 */}
@@ -68,7 +64,6 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
           <h2 className="tech-doc-section-title">主要章节</h2>
           <div className="tech-doc-section-list">
             {docData.mainSections.map((section, index) => {
-              // 确保section是字符串
               const sectionText = typeof section === 'string' ? section : String(section);
               return (
                 <span key={index} className="tech-doc-section-item">{sectionText}</span>
@@ -142,19 +137,12 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
         <div className="tech-doc-section">
           <h2 className="tech-doc-section-title">示例代码</h2>
           {docData.examples.map((example, index) => {
-            // 处理可能的对象结构 {lang, code}
             const code = typeof example === 'object' && example !== null && 'code' in example ? example.code : example;
             const lang = typeof example === 'object' && example !== null && 'lang' in example ? example.lang : 'javascript';
-            
             return (
               <div key={index} className="tech-doc-example">
-                <div className="tech-doc-example-header">
-                  <span className="tech-doc-example-lang">{lang}</span>
-                </div>
                 <pre className="tech-doc-code-block">
-                  <code className={`language-${lang}`}>
-                    {code}
-                  </code>
+                  <code className={`language-${lang}`}>{code}</code>
                 </pre>
               </div>
             );
@@ -168,38 +156,17 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
           <h2 className="tech-doc-section-title">相关链接</h2>
           <ul className="tech-doc-related-links">
             {docData.relatedLinks.map((link, index) => {
-              // 处理可能的对象结构 {title, url}
               const href = typeof link === 'object' && link !== null && 'url' in link ? link.url : link;
               const linkText = typeof link === 'object' && link !== null && 'title' in link ? link.title : href;
-              
               return (
                 <li key={index} className="tech-doc-related-link-item">
-                  <a 
-                    href={href} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="tech-doc-related-link"
-                  >
-                    {linkText}
-                  </a>
+                  <a href={href} target="_blank" rel="noopener noreferrer">{linkText}</a>
                 </li>
               );
             })}
           </ul>
         </div>
       )}
-
-      {/* 操作按钮 */}
-      <div className="tech-doc-actions">
-        <button className="export-single-btn" title="保存到飞书" onClick={onExport}>
-          <CloudUpload size={16} />
-          <span>导出</span>
-        </button>
-        <button className="export-single-btn" title="添加感想" onClick={onAddNote}>
-          <StickyNote size={16} />
-          <span>感想</span>
-        </button>
-      </div>
 
       {/* 感想显示区域 */}
       {notes && (
@@ -209,33 +176,21 @@ const TechDocResult: React.FC<TechDocResultProps> = ({
               <StickyNote size={14} />
               <span>我的感想</span>
             </div>
-            {notes.length > 100 && (
-              <button 
-                onClick={() => {
-                  if (expandedNotes && messageIndex !== undefined) {
-                    const newSet = new Set(expandedNotes);
-                    if (newSet.has(messageIndex)) {
-                      newSet.delete(messageIndex);
-                    } else {
-                      newSet.add(messageIndex);
-                    }
-                  }
-                }}
-                className="tech-doc-notes-expand"
-              >
-                {expandedNotes?.has(messageIndex || 0) ? '收起' : '展开'}
+            {notes.length > 100 && expandedNotes && (
+              <button className="tech-doc-notes-expand">
+                {expandedNotes.has(messageIndex) ? '收起' : '展开'}
               </button>
             )}
           </div>
           <div className="tech-doc-notes-content">
-            {notes.length > 100 && !expandedNotes?.has(messageIndex || 0) 
-              ? notes.substring(0, 100) + '...' 
+            {notes.length > 100 && expandedNotes && !expandedNotes.has(messageIndex)
+              ? notes.substring(0, 100) + '...'
               : notes}
           </div>
         </div>
       )}
 
-      {/* 感想输入框 */}
+      {/* 感想编辑框 */}
       {editingNoteIndex === messageIndex && (
         <div className="tech-doc-notes-edit">
           <textarea
